@@ -1,0 +1,314 @@
+#' Configuration and Setup
+#'
+#' @description
+#' Functions for configuring ContextNet package settings and checking
+#' ecosystem installation status.
+#'
+#' @name config
+NULL
+
+
+#' Configure ContextNet package settings
+#'
+#' @description Setup cache directory, parallel processing, and AnnData backend.
+#'
+#' @param cache_dir Directory for caching NicheNet networks and other data.
+#'   Defaults to the R user cache directory.
+#' @param parallel_backend Parallelization backend: "auto", "serial",
+#'   "multicore", or "snow"
+#' @param n_cores Number of cores for parallel processing. NULL = auto-detect.
+#' @param anndata_backend Backend for reading h5ad files: "auto", "anndata",
+#'   "reticulate", or "hdf5r"
+#'
+#' @return A list of configuration settings (invisibly)
+#'
+#' @examples
+#' \dontrun{
+#' # Basic setup
+#' setup_contextnet()
+#'
+#' # Custom cache directory
+#' setup_contextnet(cache_dir = "~/.contextnet_cache")
+#'
+#' # Use 4 cores for parallel processing
+#' setup_contextnet(n_cores = 4)
+#' }
+#'
+#' @export
+setup_contextnet <- function(cache_dir = NULL,
+                              parallel_backend = c("auto", "serial", "multicore", "snow"),
+                              n_cores = NULL,
+                              anndata_backend = c("auto", "anndata", "reticulate", "hdf5r")) {
+    parallel_backend <- match.arg(parallel_backend)
+    anndata_backend <- match.arg(anndata_backend)
+
+    # Cache directory
+    if (is.null(cache_dir)) {
+        cache_dir <- tools::R_user_dir("ContextNet", "cache")
+    }
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    options(contextnet.cache_dir = cache_dir)
+
+    # Parallel backend
+    if (parallel_backend == "auto") {
+        parallel_backend <- if (.Platform$OS.type == "unix") "multicore" else "snow"
+    }
+    options(contextnet.parallel_backend = parallel_backend)
+
+    # Number of cores
+    if (is.null(n_cores)) {
+        n_cores <- max(1L, parallel::detectCores() - 1L)
+    }
+    options(contextnet.n_cores = as.integer(n_cores))
+
+    # AnnData backend
+    if (anndata_backend == "auto") {
+        anndata_backend <- .detect_anndata_backend()
+    }
+    options(contextnet.anndata_backend = anndata_backend)
+
+    cli::cli_alert_success("ContextNet configured")
+    cli::cli_alert_info("Cache: {.path {cache_dir}}")
+    cli::cli_alert_info("Parallel: {parallel_backend} ({n_cores} cores)")
+    cli::cli_alert_info("AnnData backend: {anndata_backend}")
+
+    invisible(list(
+        cache_dir = cache_dir,
+        parallel_backend = parallel_backend,
+        n_cores = n_cores,
+        anndata_backend = anndata_backend
+    ))
+}
+
+
+#' Get current ContextNet configuration
+#'
+#' @return A list of current configuration settings
+#'
+#' @examples
+#' get_config()
+#'
+#' @export
+get_config <- function() {
+    list(
+        cache_dir = getOption("contextnet.cache_dir",
+                               tools::R_user_dir("ContextNet", "cache")),
+        parallel_backend = getOption("contextnet.parallel_backend", "serial"),
+        n_cores = getOption("contextnet.n_cores", 1L),
+        anndata_backend = getOption("contextnet.anndata_backend", "auto"),
+        log_level = getOption("contextnet.log_level", "info"),
+        python_configured = getOption("contextnet.python_configured", FALSE),
+        version = as.character(utils::packageVersion("ContextNet"))
+    )
+}
+
+
+#' Reset ContextNet to default configuration
+#'
+#' @return TRUE invisibly
+#'
+#' @export
+reset_config <- function() {
+    options(
+        contextnet.cache_dir = NULL,
+        contextnet.parallel_backend = "serial",
+        contextnet.n_cores = 1L,
+        contextnet.anndata_backend = "auto",
+        contextnet.log_level = "info",
+        contextnet.log_file = NULL,
+        contextnet.python_configured = FALSE
+    )
+    cli::cli_alert_success("ContextNet configuration reset to defaults")
+    invisible(TRUE)
+}
+
+
+#' Check ContextNet ecosystem installation
+#'
+#' @description Check which components of the ContextNet ecosystem are
+#'   installed and available.
+#'
+#' @param verbose Logical, print status messages (default: TRUE)
+#'
+#' @return A list of installation status for each component (invisibly)
+#'
+#' @examples
+#' check_ecosystem()
+#'
+#' @export
+check_ecosystem <- function(verbose = TRUE) {
+    status <- list()
+
+    # ContextNet (always TRUE if this function is called)
+    pkg_version <- as.character(utils::packageVersion("ContextNet"))
+    status$contextnet <- list(installed = TRUE, version = pkg_version)
+    if (verbose) {
+        cli::cli_alert_success("ContextNet {pkg_version}")
+    }
+
+    # NicheNet (required for analysis)
+    status$nichenetr <- list(
+        installed = requireNamespace("nichenetr", quietly = TRUE)
+    )
+    if (verbose) {
+        if (status$nichenetr$installed) {
+            nn_version <- as.character(utils::packageVersion("nichenetr"))
+            cli::cli_alert_success("nichenetr {nn_version}")
+        } else {
+            cli::cli_alert_warning("nichenetr not found (required for analysis)")
+            cli::cli_alert_info("Install: {.code devtools::install_github('saeyslab/nichenetr')}")
+        }
+    }
+
+    # MultiNicheNet (optional)
+    status$multinichenetr <- list(
+        installed = requireNamespace("multinichenetr", quietly = TRUE)
+    )
+    if (verbose) {
+        if (status$multinichenetr$installed) {
+            cli::cli_alert_success("multinichenetr installed")
+        } else {
+            cli::cli_alert_info("multinichenetr not found (optional, for multi-condition)")
+        }
+    }
+
+    # Seurat (for expression data)
+    status$seurat <- list(
+        installed = requireNamespace("Seurat", quietly = TRUE)
+    )
+    if (verbose) {
+        if (status$seurat$installed) {
+            seurat_version <- as.character(utils::packageVersion("Seurat"))
+            cli::cli_alert_success("Seurat {seurat_version}")
+        } else {
+            cli::cli_alert_warning("Seurat not found")
+        }
+    }
+
+    # reticulate (optional, for Python integration)
+    status$reticulate <- list(
+        installed = requireNamespace("reticulate", quietly = TRUE)
+    )
+    if (verbose) {
+        if (status$reticulate$installed) {
+            cli::cli_alert_success("reticulate installed (Python integration available)")
+        } else {
+            cli::cli_alert_info("reticulate not found (optional, for Python plotting)")
+        }
+    }
+
+    # Check for Python contextnet-plot
+    status$contextnet_plot <- list(installed = FALSE)
+    if (status$reticulate$installed) {
+        status$contextnet_plot$installed <- .python_module_available("contextnet_plot")
+    }
+    if (verbose) {
+        if (status$contextnet_plot$installed) {
+            cli::cli_alert_success("contextnet-plot (Python) available")
+        } else {
+            cli::cli_alert_info("contextnet-plot not found (optional, for visualization)")
+            cli::cli_alert_info("Install: {.code pip install contextnet-plot}")
+        }
+    }
+
+    # Check for snakemake (pipeline)
+    snakemake_path <- Sys.which("snakemake")
+    status$pipeline <- list(installed = nzchar(snakemake_path))
+    if (verbose) {
+        if (status$pipeline$installed) {
+            cli::cli_alert_success("snakemake found (GRN pipeline available)")
+        } else {
+            cli::cli_alert_info("contextnet-pipeline not found (optional, for GRN construction)")
+        }
+    }
+
+    # AnnData reading capability
+    status$anndata_backend <- list(
+        available = .detect_anndata_backend() != "none"
+    )
+    if (verbose) {
+        backend <- .detect_anndata_backend()
+        if (backend != "none") {
+            cli::cli_alert_success("AnnData reading available ({backend})")
+        } else {
+            cli::cli_alert_warning("No AnnData backend found")
+            cli::cli_alert_info("Install: {.code install.packages('hdf5r')}")
+        }
+    }
+
+    invisible(status)
+}
+
+
+#' Detect available AnnData reading backend
+#'
+#' @return Character string: "anndata", "hdf5r", or "none"
+#'
+#' @keywords internal
+.detect_anndata_backend <- function() {
+    if (requireNamespace("anndata", quietly = TRUE)) {
+        return("anndata")
+    }
+    if (requireNamespace("hdf5r", quietly = TRUE)) {
+        return("hdf5r")
+    }
+    if (requireNamespace("reticulate", quietly = TRUE)) {
+        if (.python_module_available("anndata")) {
+            return("reticulate")
+        }
+    }
+    "none"
+}
+
+
+#' Check if a Python module is available
+#'
+#' @param module Module name to check
+#' @return Logical
+#'
+#' @keywords internal
+.python_module_available <- function(module) {
+    if (!requireNamespace("reticulate", quietly = TRUE)) {
+        return(FALSE)
+    }
+    tryCatch({
+        reticulate::py_module_available(module)
+    }, error = function(e) {
+        FALSE
+    })
+}
+
+
+#' Setup parallel processing backend
+#'
+#' @param cores Number of cores to use
+#' @return A BiocParallel param object
+#'
+#' @keywords internal
+.setup_parallel <- function(cores = NULL) {
+    if (is.null(cores)) {
+        cores <- getOption("contextnet.n_cores", 1L)
+    }
+
+    if (!requireNamespace("BiocParallel", quietly = TRUE)) {
+        if (cores > 1) {
+            cli::cli_warn(c(
+                "BiocParallel not installed, using serial processing",
+                "i" = "Install: {.code BiocManager::install('BiocParallel')}"
+            ))
+        }
+        return(NULL)
+    }
+
+    backend <- getOption("contextnet.parallel_backend", "serial")
+
+    if (cores == 1 || backend == "serial") {
+        return(BiocParallel::SerialParam())
+    }
+
+    if (backend == "multicore" && .Platform$OS.type == "unix") {
+        return(BiocParallel::MulticoreParam(workers = cores))
+    }
+
+    BiocParallel::SnowParam(workers = cores)
+}

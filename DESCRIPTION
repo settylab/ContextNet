@@ -1,0 +1,56 @@
+Package: ContextNet
+Title: scMultiomics-Enhanced Cell-Cell Communication Inference
+Version: 0.1.0
+Authors@R:
+    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"),
+           comment = c(ORCID = "YOUR-ORCID-ID"))
+Description: ContextNet extends the NicheNet framework by incorporating gene
+    regulatory networks (GRNs) constructed from single-cell multiomics data.
+    The package provides GRN import from various sources, network integration
+    with NicheNet prior knowledge networks, and streamlined analysis functions
+    for cell-cell communication inference.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.1
+Depends:
+    R (>= 4.1.0)
+Imports:
+    methods,
+    cli (>= 3.4.0),
+    rlang (>= 1.0.0),
+    dplyr (>= 1.1.0),
+    reshape2,
+    Matrix (>= 1.5-0),
+    jsonlite (>= 1.8.0),
+    yaml (>= 2.3.0)
+Suggests:
+    nichenetr,
+    multinichenetr,
+    Seurat (>= 5.0.0),
+    SeuratObject (>= 5.0.0),
+    reticulate,
+    anndata,
+    hdf5r,
+    ggplot2,
+    BiocParallel,
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+URL: https://github.com/username/ContextNet
+BugReports: https://github.com/username/ContextNet/issues
+Collate:
+    'zzz.R'
+    'logging.R'
+    'config.R'
+    'validate-params.R'
+    'validate-data.R'
+    'class-base.R'
+    'class-grn.R'
+    'class-network.R'
+    'class-result.R'
+    'class-methods.R'
+    'import-grn.R'
+    'network-integrate.R'

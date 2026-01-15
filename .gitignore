@@ -1,0 +1,47 @@
+# R package build artifacts
+*.tar.gz
+*.Rcheck/
+*.dll
+*.so
+*.dylib
+
+# R session files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# IDE and editor settings
+.claude/
+.cursor/
+.vscode/
+*.Rproj
+
+# Development files (not part of package)
+dev/
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+.smbdelete*
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Coverage reports
+covr-report/
+codecov.yml
+
+# pkgdown site
+docs/
+
+# Dependency cache
+packrat/
+renv/
+renv.lock

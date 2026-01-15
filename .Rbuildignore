@@ -1,0 +1,43 @@
+# IDE and editor settings
+^\.claude$
+^\.cursor$
+^\.vscode$
+^.*\.Rproj$
+^\.Rproj\.user$
+
+# Git and GitHub
+^\.git$
+^\.gitignore$
+^\.github$
+
+# Development files
+^dev$
+^dev/
+^writing$
+^writing/
+^CLAUDE\.md$
+
+# Jupyter notebooks
+.*\.ipynb$
+^\.ipynb_checkpoints$
+
+# OS files
+^\.DS_Store$
+
+# Documentation site
+^docs$
+^_pkgdown\.yml$
+^pkgdown$
+
+# CI/CD
+^\.travis\.yml$
+^codecov\.yml$
+^appveyor\.yml$
+
+# Testing artifacts
+^covr-report$
+
+# Dependency management
+^packrat$
+^renv$
+^renv\.lock$

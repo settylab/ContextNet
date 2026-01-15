@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""
+save2word - Convert Markdown to Word document with Arial font and 0.5" margins
+
+Usage:
+    save2word <input.md> [output.docx]
+
+If output is not specified, it will use the input filename with .docx extension.
+"""
+
+import sys
+import os
+import re
+from docx import Document
+from docx.shared import Pt, Inches
+
+
+def add_formatted_text(paragraph, text):
+    """Add text with inline formatting (bold, italic, superscript, subscript)"""
+    # First, handle code blocks with backticks
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+
+    i = 0
+    while i < len(text):
+        # Check for superscript with ^
+        if text[i:i+1] == '^' and not text[i:i+2] == '^[':
+            end = text.find('^', i+1)
+            if end != -1:
+                sup_text = text[i+1:end]
+                run = paragraph.add_run(sup_text)
+                run.font.superscript = True
+                run.font.name = 'Arial'
+                i = end + 1
+                continue
+
+        # Check for HTML superscript
+        sup_match = re.match(r'<sup>([^<]+)</sup>', text[i:])
+        if sup_match:
+            run = paragraph.add_run(sup_match.group(1))
+            run.font.superscript = True
+            run.font.name = 'Arial'
+            i += len(sup_match.group(0))
+            continue
+
+        # Check for HTML subscript
+        sub_match = re.match(r'<sub>([^<]+)</sub>', text[i:])
+        if sub_match:
+            run = paragraph.add_run(sub_match.group(1))
+            run.font.subscript = True
+            run.font.name = 'Arial'
+            i += len(sub_match.group(0))
+            continue
+
+        # Check for bold **text**
+        bold_match = re.match(r'\*\*([^*]+)\*\*', text[i:])
+        if bold_match:
+            run = paragraph.add_run(bold_match.group(1))
+            run.bold = True
+            run.font.name = 'Arial'
+            i += len(bold_match.group(0))
+            continue
+
+        # Check for italic *text*
+        italic_match = re.match(r'\*([^*]+)\*', text[i:])
+        if italic_match:
+            run = paragraph.add_run(italic_match.group(1))
+            run.italic = True
+            run.font.name = 'Arial'
+            i += len(italic_match.group(0))
+            continue
+
+        # Check for citation ^number^
+        cite_match = re.match(r'\^(\d+(?:,\d+)*)\^', text[i:])
+        if cite_match:
+            run = paragraph.add_run(cite_match.group(1))
+            run.font.superscript = True
+            run.font.name = 'Arial'
+            i += len(cite_match.group(0))
+            continue
+
+        # Check for citation ^[text]^
+        cite_match2 = re.match(r'\^\[([^\]]+)\]\^', text[i:])
+        if cite_match2:
+            run = paragraph.add_run('[' + cite_match2.group(1) + ']')
+            run.font.superscript = True
+            run.font.name = 'Arial'
+            i += len(cite_match2.group(0))
+            continue
+
+        # Regular character - collect until next special character
+        end = i + 1
+        while end < len(text):
+            if text[end] in '*^<':
+                break
+            end += 1
+
+        run = paragraph.add_run(text[i:end])
+        run.font.name = 'Arial'
+        i = end
+
+
+def convert_markdown_to_word(input_path, output_path):
+    """Convert a markdown file to a Word document."""
+
+    # Read the markdown file
+    with open(input_path, 'r') as f:
+        content = f.read()
+
+    # Create a new Word document
+    doc = Document()
+
+    # Set margins to 0.5 inches
+    for section in doc.sections:
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.5)
+        section.left_margin = Inches(0.5)
+        section.right_margin = Inches(0.5)
+
+    # Set default font to Arial
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Arial'
+    font.size = Pt(11)
+
+    # Update heading styles to use Arial
+    for i in range(1, 4):
+        heading_style = doc.styles[f'Heading {i}']
+        heading_style.font.name = 'Arial'
+
+    # Process the markdown content
+    lines = content.split('\n')
+    i = 0
+
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # Skip empty lines
+        if not line:
+            i += 1
+            continue
+
+        # Skip horizontal rules
+        if line == '---':
+            i += 1
+            continue
+
+        # Handle headers
+        if line.startswith('## ') and not line.startswith('### '):
+            p = doc.add_heading(line[3:], level=1)
+            for run in p.runs:
+                run.font.name = 'Arial'
+            i += 1
+            continue
+
+        if line.startswith('### '):
+            p = doc.add_heading(line[4:], level=2)
+            for run in p.runs:
+                run.font.name = 'Arial'
+            i += 1
+            continue
+
+        if line.startswith('#### '):
+            p = doc.add_heading(line[5:], level=3)
+            for run in p.runs:
+                run.font.name = 'Arial'
+            i += 1
+            continue
+
+        # Handle bullet points
+        if line.startswith('- **'):
+            p = doc.add_paragraph(style='List Bullet')
+            match = re.match(r'- \*\*([^*]+)\*\*:?\s*(.*)', line)
+            if match:
+                run = p.add_run(match.group(1))
+                run.bold = True
+                run.font.name = 'Arial'
+                if match.group(2):
+                    p.add_run(': ' if ':' in line else '')
+                    add_formatted_text(p, match.group(2))
+            i += 1
+            continue
+
+        if line.startswith('- '):
+            p = doc.add_paragraph(style='List Bullet')
+            add_formatted_text(p, line[2:])
+            i += 1
+            continue
+
+        # Handle numbered references
+        ref_match = re.match(r'^(\d+)\.\s+(.+)$', line)
+        if ref_match:
+            p = doc.add_paragraph()
+            run = p.add_run(ref_match.group(1) + '. ')
+            run.font.name = 'Arial'
+            add_formatted_text(p, ref_match.group(2))
+            i += 1
+            continue
+
+        # Regular paragraph
+        p = doc.add_paragraph()
+        add_formatted_text(p, line)
+        i += 1
+
+    # Save the document
+    doc.save(output_path)
+    print(f"Saved: {output_path}")
+    print(f"  Font: Arial (11pt)")
+    print(f"  Margins: 0.5 inches (all sides)")
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+
+    input_path = sys.argv[1]
+
+    if not os.path.exists(input_path):
+        print(f"Error: File not found: {input_path}")
+        sys.exit(1)
+
+    if len(sys.argv) >= 3:
+        output_path = sys.argv[2]
+    else:
+        # Replace .md extension with .docx
+        base = os.path.splitext(input_path)[0]
+        output_path = base + '.docx'
+
+    convert_markdown_to_word(input_path, output_path)
+
+
+if __name__ == '__main__':
+    main()
