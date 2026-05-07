@@ -9,21 +9,11 @@ test_that("get_config returns expected structure", {
 })
 
 test_that("reset_config resets to defaults", {
-    # Set some custom values
-    options(contextnet.log_level = "debug")
+    options(contextnet.parallel_backend = "multicore")
 
     reset_config()
 
-    expect_equal(getOption("contextnet.log_level"), "info")
     expect_equal(getOption("contextnet.parallel_backend"), "serial")
-})
-
-test_that("setup_logging changes log level", {
-    old_level <- setup_logging("debug")
-    expect_equal(getOption("contextnet.log_level"), "debug")
-
-    setup_logging("info")
-    expect_equal(getOption("contextnet.log_level"), "info")
 })
 
 test_that("check_ecosystem returns status list", {

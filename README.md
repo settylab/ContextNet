@@ -63,16 +63,20 @@ ligand_activities(result)
 
 ### Sankey visualization with ccflowR
 
+ContextNet pairs with [ccflowR](https://github.com/settylab/ccflowR) to render cell-cell communication as a Sankey diagram (sender → ligand → receptor → target → receiver).
+
 ```r
-# Prepare per-receiver data
-data_recv <- prepare_for_ccflowr(result, seurat_obj, network)
-
-# Combine, scale globally, threshold
-sankey_data <- combine_sankey_data(data_recv, threshold_quantile = 0.95)
-
-# Visualize (requires ccflowR)
 library(ccflowR)
-ccflowR::sankey_flow(sankey_data, cell_colors)
+
+# 1. Build per-receiver Sankey data: composite score from ligand expression and predicted activity
+sankey_raw <- prepare_for_ccflowr(result, expression_data = seurat_obj, network = network)
+
+# 2. Combine across receivers, scale globally, threshold to top quantile
+sankey_data <- combine_sankey_data(sankey_raw, threshold_quantile = 0.95)
+
+# 3. Render
+cell_colors <- c(Myeloid = "#E41A1C", Fibroblast = "#377EB8", Epithelial = "#4DAF4A")
+sankey_flow(sankey_data, cell_colors)
 ```
 
 ## Tutorials
@@ -80,7 +84,7 @@ ccflowR::sankey_flow(sankey_data, cell_colors)
 | Tutorial | Description |
 |----------|-------------|
 | [01 - Getting Started](notebooks/01-getting-started.ipynb) | Concepts, installation, and quick 4-step workflow |
-| [02 - Standard Workflow](notebooks/02-standard-workflow.ipynb) | Full NicheNet workflow with visualization and export |
+| [02 - Standard Workflow](notebooks/02-standard-workflow.ipynb) | Full NicheNet workflow with Sankey visualization |
 | [03 - Multi-Condition Workflow](notebooks/03-multicondition-workflow.ipynb) | Differential analysis with MultiNicheNet and biological replicates |
 
 ## Key Functions
@@ -116,17 +120,18 @@ result <- predict_ligand_activity_multinichenet(
 )
 ```
 
-### Visualization Export
+### Visualization
 
 ```r
-# Sankey flow data for ccflowR
-data <- prepare_for_ccflowr(result, seurat_obj, network)
-sankey <- combine_sankey_data(data_recv1, data_recv2, threshold_quantile = 0.95)
+# Build Sankey data and render with ccflowR
+sankey_raw  <- prepare_for_ccflowr(result, expression_data = seurat_obj, network = network)
+sankey_data <- combine_sankey_data(sankey_raw, threshold_quantile = 0.95)
+ccflowR::sankey_flow(sankey_data, cell_colors)
+```
 
-# Cytoscape
-export_to_cytoscape(network, "network.graphml")
+### Save / Load
 
-# Save/load ContextNet objects
+```r
 save_contextnet(result, "analysis.cnet")
 result <- load_contextnet("analysis.cnet")
 ```
@@ -152,4 +157,6 @@ ContextNet builds on NicheNet and MultiNicheNet:
 
 ## License
 
-MIT
+GPL (>= 3). See [LICENSE.md](LICENSE.md) for the full license text.
+
+ContextNet imports [nichenetr](https://github.com/saeyslab/nichenetr) (GPL-3, Saeys lab, Ghent University), so the package is distributed under a GPL-compatible license.

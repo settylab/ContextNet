@@ -83,7 +83,6 @@ get_config <- function() {
                                tools::R_user_dir("ContextNet", "cache")),
         parallel_backend = getOption("contextnet.parallel_backend", "serial"),
         n_cores = getOption("contextnet.n_cores", 1L),
-        log_level = getOption("contextnet.log_level", "info"),
         version = as.character(utils::packageVersion("ContextNet"))
     )
 }
@@ -98,9 +97,7 @@ reset_config <- function() {
     options(
         contextnet.cache_dir = NULL,
         contextnet.parallel_backend = "serial",
-        contextnet.n_cores = 1L,
-        contextnet.log_level = "info",
-        contextnet.log_file = NULL
+        contextnet.n_cores = 1L
     )
     cli::cli_alert_success("ContextNet configuration reset to defaults")
     invisible(TRUE)
@@ -210,54 +207,3 @@ check_ecosystem <- function(verbose = TRUE) {
 }
 
 
-#' Check if a Python module is available
-#'
-#' @param module Module name to check
-#' @return Logical
-#'
-#' @keywords internal
-.python_module_available <- function(module) {
-    if (!requireNamespace("reticulate", quietly = TRUE)) {
-        return(FALSE)
-    }
-    tryCatch({
-        reticulate::py_module_available(module)
-    }, error = function(e) {
-        FALSE
-    })
-}
-
-
-#' Setup parallel processing backend
-#'
-#' @param cores Number of cores to use
-#' @return A BiocParallel param object
-#'
-#' @keywords internal
-.setup_parallel <- function(cores = NULL) {
-    if (is.null(cores)) {
-        cores <- getOption("contextnet.n_cores", 1L)
-    }
-
-    if (!requireNamespace("BiocParallel", quietly = TRUE)) {
-        if (cores > 1) {
-            cli::cli_warn(c(
-                "BiocParallel not installed, using serial processing",
-                "i" = "Install: {.code BiocManager::install('BiocParallel')}"
-            ))
-        }
-        return(NULL)
-    }
-
-    backend <- getOption("contextnet.parallel_backend", "serial")
-
-    if (cores == 1 || backend == "serial") {
-        return(BiocParallel::SerialParam())
-    }
-
-    if (backend == "multicore" && .Platform$OS.type == "unix") {
-        return(BiocParallel::MulticoreParam(workers = cores))
-    }
-
-    BiocParallel::SnowParam(workers = cores)
-}

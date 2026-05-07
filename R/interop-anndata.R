@@ -48,7 +48,7 @@ anndata_to_seurat <- function(path, assay_name = "RNA") {
         ))
     }
 
-    .log_info("Reading h5ad file: {.path {path}}")
+    cli::cli_alert_info("Reading h5ad file: {.path {path}}")
 
     # Read AnnData using anndataR
     adata <- tryCatch({
@@ -61,7 +61,7 @@ anndata_to_seurat <- function(path, assay_name = "RNA") {
         ))
     })
 
-    .log_info("Converting to Seurat object")
+    cli::cli_alert_info("Converting to Seurat object")
 
     # Convert to Seurat
     seurat_obj <- tryCatch({
@@ -73,7 +73,7 @@ anndata_to_seurat <- function(path, assay_name = "RNA") {
         ))
     })
 
-    .log_info("Conversion complete: {ncol(seurat_obj)} cells, {nrow(seurat_obj)} features")
+    cli::cli_alert_info("Conversion complete: {ncol(seurat_obj)} cells, {nrow(seurat_obj)} features")
 
     seurat_obj
 }

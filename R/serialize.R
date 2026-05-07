@@ -34,7 +34,7 @@ NULL
 #' network <- integrate_networks(grn)
 #' save_contextnet(network, "my_network.cnet")
 #'
-#' result <- analyze_communication(seurat_obj, network, ...)
+#' result <- predict_ligand_activity_nichenet(seurat_obj, network, ...)
 #' save_contextnet(result, "my_result.cnet")
 #' }
 #'
