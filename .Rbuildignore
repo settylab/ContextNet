@@ -16,10 +16,14 @@
 ^writing$
 ^writing/
 ^CLAUDE\.md$
+^bin$
+^data$
+^data/
 
-# Jupyter notebooks
-.*\.ipynb$
+# Jupyter notebooks and tutorials (not part of R package build)
 ^\.ipynb_checkpoints$
+^notebooks$
+^notebooks/
 
 # OS files
 ^\.DS_Store$

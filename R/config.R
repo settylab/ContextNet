@@ -10,15 +10,13 @@ NULL
 
 #' Configure ContextNet package settings
 #'
-#' @description Setup cache directory, parallel processing, and AnnData backend.
+#' @description Setup cache directory and parallel processing.
 #'
 #' @param cache_dir Directory for caching NicheNet networks and other data.
 #'   Defaults to the R user cache directory.
 #' @param parallel_backend Parallelization backend: "auto", "serial",
 #'   "multicore", or "snow"
 #' @param n_cores Number of cores for parallel processing. NULL = auto-detect.
-#' @param anndata_backend Backend for reading h5ad files: "auto", "anndata",
-#'   "reticulate", or "hdf5r"
 #'
 #' @return A list of configuration settings (invisibly)
 #'
@@ -37,10 +35,8 @@ NULL
 #' @export
 setup_contextnet <- function(cache_dir = NULL,
                               parallel_backend = c("auto", "serial", "multicore", "snow"),
-                              n_cores = NULL,
-                              anndata_backend = c("auto", "anndata", "reticulate", "hdf5r")) {
+                              n_cores = NULL) {
     parallel_backend <- match.arg(parallel_backend)
-    anndata_backend <- match.arg(anndata_backend)
 
     # Cache directory
     if (is.null(cache_dir)) {
@@ -61,22 +57,14 @@ setup_contextnet <- function(cache_dir = NULL,
     }
     options(contextnet.n_cores = as.integer(n_cores))
 
-    # AnnData backend
-    if (anndata_backend == "auto") {
-        anndata_backend <- .detect_anndata_backend()
-    }
-    options(contextnet.anndata_backend = anndata_backend)
-
     cli::cli_alert_success("ContextNet configured")
     cli::cli_alert_info("Cache: {.path {cache_dir}}")
     cli::cli_alert_info("Parallel: {parallel_backend} ({n_cores} cores)")
-    cli::cli_alert_info("AnnData backend: {anndata_backend}")
 
     invisible(list(
         cache_dir = cache_dir,
         parallel_backend = parallel_backend,
-        n_cores = n_cores,
-        anndata_backend = anndata_backend
+        n_cores = n_cores
     ))
 }
 
@@ -95,9 +83,7 @@ get_config <- function() {
                                tools::R_user_dir("ContextNet", "cache")),
         parallel_backend = getOption("contextnet.parallel_backend", "serial"),
         n_cores = getOption("contextnet.n_cores", 1L),
-        anndata_backend = getOption("contextnet.anndata_backend", "auto"),
         log_level = getOption("contextnet.log_level", "info"),
-        python_configured = getOption("contextnet.python_configured", FALSE),
         version = as.character(utils::packageVersion("ContextNet"))
     )
 }
@@ -113,10 +99,8 @@ reset_config <- function() {
         contextnet.cache_dir = NULL,
         contextnet.parallel_backend = "serial",
         contextnet.n_cores = 1L,
-        contextnet.anndata_backend = "auto",
         contextnet.log_level = "info",
-        contextnet.log_file = NULL,
-        contextnet.python_configured = FALSE
+        contextnet.log_file = NULL
     )
     cli::cli_alert_success("ContextNet configuration reset to defaults")
     invisible(TRUE)
@@ -197,20 +181,6 @@ check_ecosystem <- function(verbose = TRUE) {
         }
     }
 
-    # Check for Python contextnet-plot
-    status$contextnet_plot <- list(installed = FALSE)
-    if (status$reticulate$installed) {
-        status$contextnet_plot$installed <- .python_module_available("contextnet_plot")
-    }
-    if (verbose) {
-        if (status$contextnet_plot$installed) {
-            cli::cli_alert_success("contextnet-plot (Python) available")
-        } else {
-            cli::cli_alert_info("contextnet-plot not found (optional, for visualization)")
-            cli::cli_alert_info("Install: {.code pip install contextnet-plot}")
-        }
-    }
-
     # Check for snakemake (pipeline)
     snakemake_path <- Sys.which("snakemake")
     status$pipeline <- list(installed = nzchar(snakemake_path))
@@ -222,42 +192,21 @@ check_ecosystem <- function(verbose = TRUE) {
         }
     }
 
-    # AnnData reading capability
-    status$anndata_backend <- list(
-        available = .detect_anndata_backend() != "none"
+    # ccflowR (optional, for sankey flow visualization)
+    status$ccflowR <- list(
+        installed = requireNamespace("ccflowR", quietly = TRUE)
     )
     if (verbose) {
-        backend <- .detect_anndata_backend()
-        if (backend != "none") {
-            cli::cli_alert_success("AnnData reading available ({backend})")
+        if (status$ccflowR$installed) {
+            ccflowr_version <- as.character(utils::packageVersion("ccflowR"))
+            cli::cli_alert_success("ccflowR {ccflowr_version} (sankey visualization available)")
         } else {
-            cli::cli_alert_warning("No AnnData backend found")
-            cli::cli_alert_info("Install: {.code install.packages('hdf5r')}")
+            cli::cli_alert_info("ccflowR not found (optional, for sankey flow visualization)")
+            cli::cli_alert_info("Install: {.code devtools::install_github('username/ccflowR')}")
         }
     }
 
     invisible(status)
-}
-
-
-#' Detect available AnnData reading backend
-#'
-#' @return Character string: "anndata", "hdf5r", or "none"
-#'
-#' @keywords internal
-.detect_anndata_backend <- function() {
-    if (requireNamespace("anndata", quietly = TRUE)) {
-        return("anndata")
-    }
-    if (requireNamespace("hdf5r", quietly = TRUE)) {
-        return("hdf5r")
-    }
-    if (requireNamespace("reticulate", quietly = TRUE)) {
-        if (.python_module_available("anndata")) {
-            return("reticulate")
-        }
-    }
-    "none"
 }
 
 

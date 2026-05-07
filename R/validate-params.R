@@ -109,8 +109,8 @@ validate_weights <- function(weights, normalize = TRUE, call = rlang::caller_env
 #'
 #' @param object A Seurat object or similar
 #' @param condition_col Column name for condition grouping
-#' @param condition_oi Condition of interest
-#' @param condition_ref Reference condition
+#' @param condition_oi Condition(s) of interest (character vector)
+#' @param condition_ref Reference condition(s) (character vector)
 #' @param call The calling environment for error reporting
 #'
 #' @return TRUE invisibly if valid, otherwise throws an error
@@ -129,27 +129,32 @@ validate_conditions <- function(object, condition_col, condition_oi, condition_r
     # Get available conditions
     available <- unique(object[[condition_col, drop = TRUE]])
 
-    # Check condition_oi
-    if (!condition_oi %in% available) {
+    # Check condition_oi (can be vector)
+    missing_oi <- setdiff(condition_oi, available)
+    if (length(missing_oi) > 0) {
         cli::cli_abort(c(
-            "Condition {.val {condition_oi}} not found in column {.field {condition_col}}",
+            "Condition(s) of interest not found in column {.field {condition_col}}",
+            "x" = "Missing: {.val {missing_oi}}",
             "i" = "Available conditions: {.val {available}}"
         ), call = call)
     }
 
-    # Check condition_ref
-    if (!condition_ref %in% available) {
+    # Check condition_ref (can be vector)
+    missing_ref <- setdiff(condition_ref, available)
+    if (length(missing_ref) > 0) {
         cli::cli_abort(c(
-            "Reference condition {.val {condition_ref}} not found in column {.field {condition_col}}",
+            "Reference condition(s) not found in column {.field {condition_col}}",
+            "x" = "Missing: {.val {missing_ref}}",
             "i" = "Available conditions: {.val {available}}"
         ), call = call)
     }
 
-    # Check they're different
-    if (condition_oi == condition_ref) {
+    # Check no overlap between condition_oi and condition_ref
+    overlap <- intersect(condition_oi, condition_ref)
+    if (length(overlap) > 0) {
         cli::cli_abort(c(
-            "Condition of interest and reference condition must be different",
-            "x" = "Both are: {.val {condition_oi}}"
+            "Condition(s) cannot be in both condition_oi and condition_ref",
+            "x" = "Overlapping: {.val {overlap}}"
         ), call = call)
     }
 

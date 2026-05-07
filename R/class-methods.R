@@ -4,6 +4,7 @@
 #' @return NULL (invisibly), prints to console
 #'
 #' @importFrom methods show
+#' @importFrom utils head
 #' @keywords internal
 setMethod("show", "ContextBase", function(object) {
     cli::cli_h1(class(object)[1])
@@ -160,7 +161,7 @@ setMethod("show", "ContextResult", function(object) {
     cli::cli_dl(c(
         "Top ligands" = "{.val {length(object@top_ligands)}}",
         "Top targets" = "{.val {length(object@top_targets)}}",
-        "Ligand-target links" = "{.val {nrow(object@ligand_target_links)}}"
+        "Ligand-target links" = "{.val {nrow(object@ligand_target_links)}} (top ligands only)"
     ))
 
     # Show top ligands
@@ -178,7 +179,22 @@ setMethod("show", "ContextResult", function(object) {
 
     cli::cli_text("")
     cli::cli_alert_info("Created: {format(object@provenance$created, '%Y-%m-%d %H:%M:%S')}")
-    cli::cli_alert_info("Use {.fn plot} to visualize results")
+
+    # Accessor hints
+    cli::cli_text("")
+    cli::cli_h3("Access data with:")
+    cli::cli_ul(c(
+        "{.code ligand_activities(x)}
+ — all ligand activity scores (data.frame)",
+        "{.code top_ligands(x)} / {.code top_ligands(x, n = 5)}
+ — top-ranked ligand names",
+        "{.code top_targets(x)} / {.code top_targets(x, n = 10)}
+ — top target gene names",
+        "{.code ligand_target_links(x)}
+ — ligand-target links (top ligands only)",
+        "{.code parameters(x)}
+ — analysis parameters"
+    ))
 
     invisible(NULL)
 })

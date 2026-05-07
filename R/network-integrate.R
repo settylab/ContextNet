@@ -4,6 +4,9 @@
 #' Functions for integrating custom GRNs with NicheNet prior knowledge networks
 #' to create context-specific ligand-target matrices.
 #'
+#' @importFrom rlang .data
+#' @importFrom dplyr %>%
+#'
 #' @name network-integrate
 NULL
 
@@ -146,13 +149,18 @@ integrate_networks <- function(grn,
     # Logic from notebook: construct_ligand_target_matrix() with PPR algorithm
     if (verbose) cli::cli_alert("Constructing ligand-target matrix (this may take a while)...")
 
-    ligand_target_matrix <- nichenetr::construct_ligand_target_matrix(
+    # nichenetr >= 2.2.1 added lr_network parameter; older versions don't have it
+    ctm_args <- list(
         weighted_networks = weighted_networks_integrated,
         ligands = ligands,
         algorithm = "PPR",
         damping_factor = damping_factor,
         ltf_cutoff = ltf_cutoff
     )
+    if ("lr_network" %in% names(formals(nichenetr::construct_ligand_target_matrix))) {
+        ctm_args$lr_network <- lr_network
+    }
+    ligand_target_matrix <- do.call(nichenetr::construct_ligand_target_matrix, ctm_args)
 
     # ── Post-process matrix ──
     # Logic from notebook: fix column names and convert to matrix
@@ -195,7 +203,173 @@ integrate_networks <- function(grn,
 }
 
 
-#' Load NicheNet networks from database or package
+#' Load NicheNet prior knowledge data
+#'
+#' @description Download NicheNet prior knowledge networks directly from Zenodo,
+#'   matching the approach used in the official NicheNet and MultiNicheNet
+#'   tutorials. Downloads are cached to \code{cache_dir} for reuse.
+#'
+#' @param cache_dir Directory to cache downloaded files. If NULL, files are
+#'   downloaded each time. If a directory path is given, files are saved there
+#'   and loaded from cache on subsequent calls.
+#' @param version Which NicheNet data version to use:
+#'   \describe{
+#'     \item{"v2"}{Standard NicheNet v2 networks (Zenodo record 7074291).
+#'       Includes lr_network, weighted_networks, and ligand_target_matrix.}
+#'     \item{"v2_allinfo"}{Extended lr_network with additional metadata
+#'       (Zenodo record 10229222). Used by MultiNicheNet tutorials.
+#'       Only downloads lr_network; weighted_networks and ligand_target_matrix
+#'       fall back to v2.}
+#'   }
+#' @param verbose Logical, print progress messages (default: TRUE)
+#'
+#' @return A named list with:
+#'   \describe{
+#'     \item{lr_network}{Ligand-receptor network data.frame}
+#'     \item{weighted_networks}{List with lr_sig and gr components}
+#'     \item{ligand_target_matrix}{Ligand-target regulatory potential matrix}
+#'   }
+#'
+#' @details
+#' This function provides the same data that the NicheNet tutorials download
+#' manually. Use the returned objects directly with \code{\link{integrate_networks}},
+#' \code{\link{run_nichenet}}, or \code{\link{run_multinichenet}}:
+#'
+#' \preformatted{
+#' # Download NicheNet data (cached for reuse)
+#' nichenet_data <- load_nichenet_data(cache_dir = "~/.nichenet_data")
+#'
+#' # Use with integrate_networks
+#' network <- integrate_networks(grn,
+#'     lr_network = nichenet_data$lr_network,
+#'     weighted_networks = nichenet_data$weighted_networks)
+#'
+#' # Use with run_nichenet
+#' result <- run_nichenet(seurat_obj, network,
+#'     lr_network = nichenet_data$lr_network,
+#'     sender = "Macrophage", receiver = "Fibroblast",
+#'     geneset_oi = de_genes)
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Download and cache NicheNet v2 data
+#' nichenet_data <- load_nichenet_data(cache_dir = "~/.nichenet_data")
+#'
+#' # Use extended lr_network (MultiNicheNet style)
+#' nichenet_data <- load_nichenet_data(version = "v2_allinfo",
+#'                                     cache_dir = "~/.nichenet_data")
+#' }
+#'
+#' @export
+load_nichenet_data <- function(cache_dir = NULL,
+                               version = c("v2", "v2_allinfo"),
+                               verbose = TRUE) {
+    version <- match.arg(version)
+
+    # Zenodo URLs
+    zenodo_v2 <- "https://zenodo.org/record/7074291/files"
+    zenodo_allinfo <- "https://zenodo.org/record/10229222/files"
+
+    files <- list(
+        v2 = list(
+            lr_network = list(
+                url = paste0(zenodo_v2, "/lr_network_human_21122021.rds"),
+                file = "lr_network_human_21122021.rds"
+            ),
+            weighted_networks = list(
+                url = paste0(zenodo_v2, "/weighted_networks_nsga2r_final.rds"),
+                file = "weighted_networks_nsga2r_final.rds"
+            ),
+            ligand_target_matrix = list(
+                url = paste0(zenodo_v2, "/ligand_target_matrix_nsga2r_final.rds"),
+                file = "ligand_target_matrix_nsga2r_final.rds"
+            )
+        ),
+        v2_allinfo = list(
+            lr_network = list(
+                url = paste0(zenodo_allinfo,
+                             "/lr_network_human_allInfo_30112033.rds"),
+                file = "lr_network_human_allInfo_30112033.rds"
+            )
+        )
+    )
+
+    # Create cache directory if specified
+    if (!is.null(cache_dir)) {
+        cache_dir <- normalizePath(cache_dir, mustWork = FALSE)
+        if (!dir.exists(cache_dir)) {
+            dir.create(cache_dir, recursive = TRUE)
+            if (verbose) cli::cli_alert_info("Created cache directory: {.path {cache_dir}}")
+        }
+    }
+
+    # Helper to load a single file (cache or download)
+    load_file <- function(file_info, label) {
+        # Check cache first
+        if (!is.null(cache_dir)) {
+            cache_path <- file.path(cache_dir, file_info$file)
+            if (file.exists(cache_path)) {
+                if (verbose) cli::cli_alert_success("Loaded {label} from cache: {.file {cache_path}}")
+                return(readRDS(cache_path))
+            }
+        }
+
+        # Download
+        if (verbose) cli::cli_alert("Downloading {label} from Zenodo...")
+        data <- tryCatch({
+            readRDS(url(file_info$url))
+        }, error = function(e) {
+            cli::cli_abort(c(
+                "Failed to download {label} from Zenodo",
+                "x" = e$message,
+                "i" = "URL: {.url {file_info$url}}",
+                "i" = "Check your internet connection or download manually"
+            ))
+        })
+        if (verbose) cli::cli_alert_success("Downloaded {label}")
+
+        # Cache if directory specified
+        if (!is.null(cache_dir)) {
+            tryCatch({
+                saveRDS(data, file.path(cache_dir, file_info$file))
+                if (verbose) cli::cli_alert_info("Cached to {.file {file.path(cache_dir, file_info$file)}}")
+            }, error = function(e) {
+                cli::cli_alert_warning("Could not cache file: {e$message}")
+            })
+        }
+
+        data
+    }
+
+    result <- list()
+
+    # Load lr_network (version-specific)
+    if (version == "v2_allinfo") {
+        result$lr_network <- load_file(files$v2_allinfo$lr_network, "lr_network (allInfo)")
+    } else {
+        result$lr_network <- load_file(files$v2$lr_network, "lr_network")
+    }
+
+    # weighted_networks and ligand_target_matrix always from v2
+    result$weighted_networks <- load_file(files$v2$weighted_networks, "weighted_networks")
+    result$ligand_target_matrix <- load_file(files$v2$ligand_target_matrix, "ligand_target_matrix")
+
+    if (verbose) {
+        cli::cli_alert_success("Loaded all NicheNet data ({version})")
+        cli::cli_alert_info("lr_network: {nrow(result$lr_network)} interactions")
+        if (is.matrix(result$ligand_target_matrix)) {
+            cli::cli_alert_info(
+                "ligand_target_matrix: {nrow(result$ligand_target_matrix)} ligands x {ncol(result$ligand_target_matrix)} targets"
+            )
+        }
+    }
+
+    result
+}
+
+
+#' Load NicheNet networks from database, Zenodo, or package
 #'
 #' @param nichenet_database Path to NicheNet database directory (optional)
 #' @param verbose Logical, print messages
@@ -242,16 +416,13 @@ integrate_networks <- function(grn,
         }
     }
 
-    # Fall back to nichenetr package data
+    # Try nichenetr package data
     if (is.null(lr_network)) {
         if (verbose) cli::cli_alert("Loading lr_network from nichenetr package...")
         lr_network <- tryCatch({
             nichenetr::lr_network
         }, error = function(e) {
-            cli::cli_abort(c(
-                "Cannot load lr_network from nichenetr",
-                "i" = "Provide path via {.arg nichenet_database}"
-            ))
+            NULL
         })
     }
 
@@ -260,11 +431,37 @@ integrate_networks <- function(grn,
         weighted_networks <- tryCatch({
             nichenetr::weighted_networks
         }, error = function(e) {
-            cli::cli_abort(c(
-                "Cannot load weighted_networks from nichenetr",
-                "i" = "Provide path via {.arg nichenet_database}"
-            ))
+            NULL
         })
+    }
+
+    # Fall back to Zenodo download
+    if (is.null(lr_network) || is.null(weighted_networks)) {
+        if (verbose) cli::cli_alert("Downloading missing NicheNet data from Zenodo...")
+        zenodo <- tryCatch({
+            load_nichenet_data(cache_dir = nichenet_database, verbose = verbose)
+        }, error = function(e) {
+            NULL
+        })
+
+        if (!is.null(zenodo)) {
+            lr_network <- lr_network %||% zenodo$lr_network
+            weighted_networks <- weighted_networks %||% zenodo$weighted_networks
+        }
+    }
+
+    if (is.null(lr_network)) {
+        cli::cli_abort(c(
+            "Cannot load lr_network",
+            "i" = "Use {.fn load_nichenet_data} to download, or provide path via {.arg nichenet_database}"
+        ))
+    }
+
+    if (is.null(weighted_networks)) {
+        cli::cli_abort(c(
+            "Cannot load weighted_networks",
+            "i" = "Use {.fn load_nichenet_data} to download, or provide path via {.arg nichenet_database}"
+        ))
     }
 
     list(
@@ -410,7 +607,7 @@ integrate_networks <- function(grn,
 #'   - weighted_networks: List with lr_sig and gr components
 #'
 #' @examples
-#' \dontrun
+#' \dontrun{
 #' grn <- import_grn("path/to/grn/")
 #' network <- integrate_networks(grn)
 #'

@@ -12,7 +12,7 @@ Description: ContextNet extends the NicheNet framework by incorporating gene
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.1
+RoxygenNote: 7.3.3
 Depends:
     R (>= 4.1.0)
 Imports:
@@ -21,24 +21,26 @@ Imports:
     rlang (>= 1.0.0),
     dplyr (>= 1.1.0),
     reshape2,
-    Matrix (>= 1.5-0),
-    jsonlite (>= 1.8.0),
-    yaml (>= 2.3.0)
+    jsonlite,
+    utils
 Suggests:
     nichenetr,
     multinichenetr,
+    presto,
     Seurat (>= 5.0.0),
     SeuratObject (>= 5.0.0),
+    ccflowR,
     reticulate,
-    anndata,
+    anndataR,
     hdf5r,
+    Matrix,
     ggplot2,
     BiocParallel,
-    testthat (>= 3.0.0),
     knitr,
-    rmarkdown
+    rmarkdown,
+    IRkernel,
+    testthat (>= 3.0.0)
 Config/testthat/edition: 3
-VignetteBuilder: knitr
 URL: https://github.com/username/ContextNet
 BugReports: https://github.com/username/ContextNet/issues
 Collate:
@@ -54,3 +56,10 @@ Collate:
     'class-methods.R'
     'import-grn.R'
     'network-integrate.R'
+    'interop-nichenet.R'
+    'interop-multinichenet.R'
+    'interop-anndata.R'
+    'analyze.R'
+    'export.R'
+    'serialize.R'
+    'tune-params.R'

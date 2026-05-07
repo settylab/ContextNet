@@ -27,27 +27,27 @@ test_that("validate_weights normalizes if needed", {
 })
 
 test_that("validate_geneset_oi rejects missing geneset", {
-    expect_error(validate_geneset_oi(NULL), "required")
-    expect_error(validate_geneset_oi(character()), "empty")
+    expect_error(ContextNet:::validate_geneset_oi(NULL), "required")
+    expect_error(ContextNet:::validate_geneset_oi(character()), "empty")
 })
 
 test_that("validate_geneset_oi accepts valid geneset", {
     genes <- c("Gene1", "Gene2", "Gene3")
-    expect_invisible(validate_geneset_oi(genes))
+    expect_invisible(ContextNet:::validate_geneset_oi(genes))
 })
 
 test_that("validate_path checks file existence", {
     expect_error(
-        validate_path("/nonexistent/path", must_exist = TRUE),
+        ContextNet:::validate_path("/nonexistent/path", must_exist = TRUE),
         "does not exist"
     )
 })
 
 test_that("validate_positive_integer works correctly", {
-    expect_invisible(validate_positive_integer(5, "test"))
-    expect_error(validate_positive_integer(-1, "test"), "between")
-    expect_error(validate_positive_integer(1.5, "test"), "integer")
-    expect_error(validate_positive_integer("a", "test"), "number")
+    expect_invisible(ContextNet:::validate_positive_integer(5, "test"))
+    expect_error(ContextNet:::validate_positive_integer(-1, "test"), "between")
+    expect_error(ContextNet:::validate_positive_integer(1.5, "test"), "integer")
+    expect_error(ContextNet:::validate_positive_integer("a", "test"), "number")
 })
 
 test_that("validate_grn_edges accepts valid edges", {
@@ -56,23 +56,23 @@ test_that("validate_grn_edges accepts valid edges", {
         to = c("Gene1", "Gene2"),
         weight = c(0.5, 0.8)
     )
-    expect_invisible(validate_grn_edges(edges))
+    expect_invisible(ContextNet:::validate_grn_edges(edges))
 })
 
 test_that("validate_grn_edges rejects non-dataframe", {
-    expect_error(validate_grn_edges("not a df"), "data.frame")
+    expect_error(ContextNet:::validate_grn_edges("not a df"), "data.frame")
 })
 
 test_that("validate_grn_edges rejects empty dataframe", {
-    expect_error(validate_grn_edges(data.frame()), "empty")
+    expect_error(ContextNet:::validate_grn_edges(data.frame()), "empty")
 })
 
 test_that("validate_context_grn accepts valid GRN", {
     edges <- create_test_edges(50)
     grn <- ContextGRN(edges)
-    expect_invisible(validate_context_grn(grn))
+    expect_invisible(ContextNet:::validate_context_grn(grn))
 })
 
 test_that("validate_context_grn rejects non-GRN objects", {
-    expect_error(validate_context_grn("not a grn"), "ContextGRN")
+    expect_error(ContextNet:::validate_context_grn("not a grn"), "ContextGRN")
 })

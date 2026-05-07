@@ -15,13 +15,19 @@
 .claude/
 .cursor/
 .vscode/
+.jupyter/
 *.Rproj
+CLAUDE.md
 
 # Development files (not part of package)
 dev/
-
-# Jupyter notebooks
+data/
+writing/
+tests/
+reproduce_results/
+# Jupyter notebooks (except tutorials)
 *.ipynb
+!notebooks/*.ipynb
 .ipynb_checkpoints/
 
 # OS files
@@ -33,6 +39,10 @@ Thumbs.db
 *.tmp
 *.temp
 *~
+test_file_path.txt
+
+# Python conda env (not part of R package)
+environment.yml
 
 # Coverage reports
 covr-report/

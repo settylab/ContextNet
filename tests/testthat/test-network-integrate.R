@@ -210,7 +210,11 @@ test_that("integrate_networks works with nichenetr", {
     grn <- ContextGRN(edges)
 
     # This test requires actual NicheNet data
-    network <- integrate_networks(grn, verbose = FALSE)
+    network <- integrate_networks(
+        grn,
+        nichenet_database = get_nichenet_database(),
+        verbose = FALSE
+    )
 
     expect_s4_class(network, "ContextNetwork")
     expect_true(nrow(network@ligand_target_matrix) > 0)
@@ -223,10 +227,20 @@ test_that("integrate_networks respects integration mode", {
     edges <- create_test_edges(100)
     grn <- ContextGRN(edges)
 
-    network_replace <- integrate_networks(grn, mode = "replace", verbose = FALSE)
+    network_replace <- integrate_networks(
+        grn,
+        mode = "replace",
+        nichenet_database = get_nichenet_database(),
+        verbose = FALSE
+    )
     expect_equal(network_replace@integration_params$mode, "replace")
 
-    network_augment <- integrate_networks(grn, mode = "augment", verbose = FALSE)
+    network_augment <- integrate_networks(
+        grn,
+        mode = "augment",
+        nichenet_database = get_nichenet_database(),
+        verbose = FALSE
+    )
     expect_equal(network_augment@integration_params$mode, "augment")
 })
 
@@ -240,6 +254,7 @@ test_that("integrate_networks stores parameters correctly", {
         grn,
         mode = "weighted",
         weights = c(grn = 0.7, nichenet = 0.3),
+        nichenet_database = get_nichenet_database(),
         verbose = FALSE
     )
 

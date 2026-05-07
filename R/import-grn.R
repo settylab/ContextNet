@@ -6,6 +6,7 @@
 #'
 #' @importFrom utils read.csv
 #' @importFrom rlang .data
+#' @importFrom dplyr %>%
 #'
 #' @name import-grn
 NULL

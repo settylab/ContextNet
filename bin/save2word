@@ -14,14 +14,215 @@ import re
 from docx import Document
 from docx.shared import Pt, Inches
 
+# LaTeX symbol to Unicode mapping
+LATEX_SYMBOLS = {
+    r'\times': '×',
+    r'\cdot': '·',
+    r'\pm': '±',
+    r'\leq': '≤',
+    r'\geq': '≥',
+    r'\neq': '≠',
+    r'\approx': '≈',
+    r'\infty': '∞',
+    r'\sum': 'Σ',
+    r'\prod': 'Π',
+    r'\int': '∫',
+    r'\partial': '∂',
+    r'\nabla': '∇',
+    r'\alpha': 'α',
+    r'\beta': 'β',
+    r'\gamma': 'γ',
+    r'\delta': 'δ',
+    r'\epsilon': 'ε',
+    r'\zeta': 'ζ',
+    r'\eta': 'η',
+    r'\theta': 'θ',
+    r'\iota': 'ι',
+    r'\kappa': 'κ',
+    r'\lambda': 'λ',
+    r'\mu': 'μ',
+    r'\nu': 'ν',
+    r'\xi': 'ξ',
+    r'\pi': 'π',
+    r'\rho': 'ρ',
+    r'\sigma': 'σ',
+    r'\tau': 'τ',
+    r'\upsilon': 'υ',
+    r'\phi': 'φ',
+    r'\chi': 'χ',
+    r'\psi': 'ψ',
+    r'\omega': 'ω',
+    r'\Gamma': 'Γ',
+    r'\Delta': 'Δ',
+    r'\Theta': 'Θ',
+    r'\Lambda': 'Λ',
+    r'\Xi': 'Ξ',
+    r'\Pi': 'Π',
+    r'\Sigma': 'Σ',
+    r'\Phi': 'Φ',
+    r'\Psi': 'Ψ',
+    r'\Omega': 'Ω',
+    r'\in': '∈',
+    r'\notin': '∉',
+    r'\subset': '⊂',
+    r'\supset': '⊃',
+    r'\cup': '∪',
+    r'\cap': '∩',
+    r'\emptyset': '∅',
+    r'\forall': '∀',
+    r'\exists': '∃',
+    r'\neg': '¬',
+    r'\land': '∧',
+    r'\lor': '∨',
+    r'\rightarrow': '→',
+    r'\leftarrow': '←',
+    r'\Rightarrow': '⇒',
+    r'\Leftarrow': '⇐',
+    r'\leftrightarrow': '↔',
+    r'\log': 'log',
+    r'\ln': 'ln',
+    r'\exp': 'exp',
+    r'\sin': 'sin',
+    r'\cos': 'cos',
+    r'\tan': 'tan',
+    r'\max': 'max',
+    r'\min': 'min',
+    r'\text': '',  # Will be handled specially
+}
+
+
+def parse_latex_math(paragraph, math_text, font_name='Arial', is_italic=True):
+    """Parse LaTeX math and add formatted runs to paragraph."""
+    # Replace LaTeX symbols with Unicode
+    text = math_text
+    for latex, unicode_char in LATEX_SYMBOLS.items():
+        text = text.replace(latex, unicode_char)
+
+    # Handle \text{...} - render as non-italic
+    text = re.sub(r'\\text\{([^}]+)\}', r'\1', text)
+
+    # Remove remaining backslashes from unknown commands
+    text = re.sub(r'\\([a-zA-Z]+)', r'\1', text)
+
+    # Remove braces that are just grouping (but keep content)
+    # Process character by character with subscript/superscript handling
+    i = 0
+    while i < len(text):
+        # Check for subscript
+        if text[i] == '_':
+            i += 1
+            if i < len(text):
+                if text[i] == '{':
+                    # Find matching brace
+                    end = text.find('}', i)
+                    if end != -1:
+                        sub_text = text[i+1:end]
+                        # Recursively handle nested sub/superscripts
+                        add_sub_super_text(paragraph, sub_text, is_subscript=True, font_name=font_name, is_italic=is_italic)
+                        i = end + 1
+                        continue
+                else:
+                    # Single character subscript
+                    run = paragraph.add_run(text[i])
+                    run.font.subscript = True
+                    run.font.name = font_name
+                    if is_italic:
+                        run.italic = True
+                    i += 1
+                    continue
+
+        # Check for superscript
+        if text[i] == '^':
+            i += 1
+            if i < len(text):
+                if text[i] == '{':
+                    # Find matching brace
+                    end = text.find('}', i)
+                    if end != -1:
+                        sup_text = text[i+1:end]
+                        add_sub_super_text(paragraph, sup_text, is_subscript=False, font_name=font_name, is_italic=is_italic)
+                        i = end + 1
+                        continue
+                else:
+                    # Single character superscript
+                    run = paragraph.add_run(text[i])
+                    run.font.superscript = True
+                    run.font.name = font_name
+                    if is_italic:
+                        run.italic = True
+                    i += 1
+                    continue
+
+        # Skip braces used for grouping
+        if text[i] in '{}':
+            i += 1
+            continue
+
+        # Regular character
+        end = i + 1
+        while end < len(text) and text[end] not in '_^{}':
+            end += 1
+
+        run = paragraph.add_run(text[i:end])
+        run.font.name = font_name
+        if is_italic:
+            run.italic = True
+        i = end
+
+
+def add_sub_super_text(paragraph, text, is_subscript=False, font_name='Arial', is_italic=True):
+    """Add text as subscript or superscript, handling nested formatting."""
+    # Handle simple cases without nested formatting
+    i = 0
+    while i < len(text):
+        # Check for nested superscript in subscript or vice versa
+        if text[i] == '^' and not is_subscript:
+            # Already in superscript, just continue
+            i += 1
+            continue
+        if text[i] == '_' and is_subscript:
+            # Already in subscript, just continue
+            i += 1
+            continue
+
+        # Skip braces
+        if text[i] in '{}':
+            i += 1
+            continue
+
+        # Collect regular characters
+        end = i + 1
+        while end < len(text) and text[end] not in '_^{}':
+            end += 1
+
+        run = paragraph.add_run(text[i:end])
+        run.font.name = font_name
+        if is_subscript:
+            run.font.subscript = True
+        else:
+            run.font.superscript = True
+        if is_italic:
+            run.italic = True
+        i = end
+
 
 def add_formatted_text(paragraph, text):
-    """Add text with inline formatting (bold, italic, superscript, subscript)"""
+    """Add text with inline formatting (bold, italic, superscript, subscript, inline math)"""
     # First, handle code blocks with backticks
     text = re.sub(r'`([^`]+)`', r'\1', text)
 
     i = 0
     while i < len(text):
+        # Check for inline LaTeX math $...$
+        if text[i] == '$' and (i == 0 or text[i-1] != '$'):
+            # Find closing $
+            end = text.find('$', i+1)
+            if end != -1 and (end+1 >= len(text) or text[end+1] != '$'):
+                math_text = text[i+1:end]
+                parse_latex_math(paragraph, math_text, font_name='Arial', is_italic=True)
+                i = end + 1
+                continue
+
         # Check for superscript with ^
         if text[i:i+1] == '^' and not text[i:i+2] == '^[':
             end = text.find('^', i+1)
@@ -90,7 +291,7 @@ def add_formatted_text(paragraph, text):
         # Regular character - collect until next special character
         end = i + 1
         while end < len(text):
-            if text[end] in '*^<':
+            if text[end] in '*^<$':
                 break
             end += 1
 
@@ -143,6 +344,37 @@ def convert_markdown_to_word(input_path, output_path):
         if line == '---':
             i += 1
             continue
+
+        # Handle display math blocks $$...$$
+        if line.startswith('$$'):
+            # Check if it's a single-line display math
+            if line.endswith('$$') and len(line) > 4:
+                math_content = line[2:-2]
+                p = doc.add_paragraph()
+                p.alignment = 1  # Center alignment
+                parse_latex_math(p, math_content, font_name='Arial', is_italic=True)
+                i += 1
+                continue
+            else:
+                # Multi-line display math - collect until closing $$
+                math_lines = []
+                if len(line) > 2:
+                    math_lines.append(line[2:])
+                i += 1
+                while i < len(lines):
+                    next_line = lines[i].strip()
+                    if next_line.endswith('$$'):
+                        if len(next_line) > 2:
+                            math_lines.append(next_line[:-2])
+                        break
+                    math_lines.append(next_line)
+                    i += 1
+                math_content = ' '.join(math_lines)
+                p = doc.add_paragraph()
+                p.alignment = 1  # Center alignment
+                parse_latex_math(p, math_content, font_name='Arial', is_italic=True)
+                i += 1
+                continue
 
         # Handle headers
         if line.startswith('## ') and not line.startswith('### '):

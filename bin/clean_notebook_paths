@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""Strip private file paths from Jupyter notebooks while preserving outputs.
+
+Usage:
+    # Clean a single notebook (overwrites in place)
+    ./bin/clean_notebook_paths notebooks/01-getting-started.ipynb
+
+    # Clean all notebooks
+    ./bin/clean_notebook_paths notebooks/*.ipynb
+
+    # Dry run (show what would change, don't write)
+    ./bin/clean_notebook_paths --dry-run notebooks/*.ipynb
+
+The script replaces private paths in both cell source code and text outputs,
+while leaving image/binary outputs untouched. devtools::load_all() calls are
+converted to library() calls.
+"""
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+
+# Ordered from most specific to least specific.
+# Each entry: (pattern, replacement)
+PATH_REPLACEMENTS = [
+    # Cluster paths
+    (r"/fh/fast/setty_m/user/yhuang2/HNSCC_cell_communication/data/[^\s\"')\]]*", "data/"),
+    (r"/fh/fast/setty_m/user/yhuang2/ContextNet/data/", "data/"),
+    (r"/fh/fast/setty_m/user/yhuang2/ContextNet/", ""),
+    (r"/fh/fast/setty_m/user/yhuang2/[^\s\"')\]]*", ""),
+    # Local mount paths
+    (r"/Volumes/yhuang2/ContextNet/data/", "data/"),
+    (r"/Volumes/yhuang2/ContextNet/?", ""),
+    # Home directory paths
+    (r"/Users/yhuang2/micromamba/envs/contextnet_test1/[^\s\"')\]]*", "<env>/"),
+    (r"/Users/yhuang2/[^\s\"')\]]*", ""),
+    # Temp directory paths (macOS)
+    (r"/var/folders/[^\s\"')\]]+/Rtmp[^\s\"')\]]*", "tempdir()"),
+]
+
+# Special source-code-only replacements
+SOURCE_REPLACEMENTS = [
+    # devtools::load_all("/path/to/ContextNet") -> library(ContextNet)
+    (r'devtools::load_all\(["\'][^"\']*ContextNet["\']?\)', "library(ContextNet)"),
+    # data_path with private paths
+    (r'data_path\s*<-\s*"[^"]*ContextNet/data/"', 'data_path <- "data/"'),
+    (r"data_path\s*<-\s*'[^']*ContextNet/data/'", "data_path <- 'data/'"),
+]
+
+
+def clean_text(text, extra_replacements=None):
+    """Apply path replacements to a text string."""
+    replacements = list(PATH_REPLACEMENTS)
+    if extra_replacements:
+        replacements = list(extra_replacements) + replacements
+
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text)
+
+    # Clean up artifacts: empty quotes from path removal
+    text = re.sub(r'"\s*"', '""', text)
+
+    return text
+
+
+def clean_source(source_lines):
+    """Clean cell source code lines."""
+    cleaned = []
+    for line in source_lines:
+        line = clean_text(line, extra_replacements=SOURCE_REPLACEMENTS)
+        cleaned.append(line)
+    return cleaned
+
+
+def clean_output_text(text_lines):
+    """Clean text in output fields (preserves ANSI codes around replacements)."""
+    return [clean_text(line) for line in text_lines]
+
+
+def clean_outputs(outputs):
+    """Clean all text-based outputs, skip binary (images, etc.)."""
+    for output in outputs:
+        # Stream output (stdout/stderr)
+        if "text" in output and isinstance(output["text"], list):
+            output["text"] = clean_output_text(output["text"])
+        elif "text" in output and isinstance(output["text"], str):
+            output["text"] = clean_text(output["text"])
+
+        # Display data / execute_result
+        if "data" in output:
+            for mime_type, content in output["data"].items():
+                # Only clean text-based MIME types
+                if mime_type.startswith("text/"):
+                    if isinstance(content, list):
+                        output["data"][mime_type] = clean_output_text(content)
+                    elif isinstance(content, str):
+                        output["data"][mime_type] = clean_text(content)
+                # Skip image/png, image/jpeg, application/*, etc.
+
+    return outputs
+
+
+def clean_notebook(nb):
+    """Clean all cells in a notebook."""
+    changes = 0
+    for cell in nb.get("cells", []):
+        # Clean source
+        if "source" in cell:
+            original = cell["source"]
+            cell["source"] = clean_source(cell["source"])
+            if cell["source"] != original:
+                changes += 1
+
+        # Clean outputs
+        if "outputs" in cell:
+            original = json.dumps(cell["outputs"])
+            cell["outputs"] = clean_outputs(cell["outputs"])
+            if json.dumps(cell["outputs"]) != original:
+                changes += 1
+
+    return nb, changes
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Strip private paths from Jupyter notebooks"
+    )
+    parser.add_argument("notebooks", nargs="+", help="Notebook files to clean")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show changes without writing"
+    )
+    args = parser.parse_args()
+
+    total_changes = 0
+    for path_str in args.notebooks:
+        path = Path(path_str)
+        if not path.exists():
+            print(f"  SKIP {path} (not found)", file=sys.stderr)
+            continue
+
+        with open(path, "r", encoding="utf-8") as f:
+            nb = json.load(f)
+
+        nb, changes = clean_notebook(nb)
+        total_changes += changes
+
+        if changes == 0:
+            print(f"  OK   {path} (no changes)")
+            continue
+
+        if args.dry_run:
+            print(f"  WOULD CLEAN {path} ({changes} cells changed)")
+        else:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(nb, f, indent=1, ensure_ascii=False)
+                f.write("\n")
+            print(f"  CLEANED {path} ({changes} cells changed)")
+
+    if args.dry_run and total_changes > 0:
+        print(f"\nDry run: {total_changes} cells would be changed. Run without --dry-run to apply.")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
