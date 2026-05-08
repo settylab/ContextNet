@@ -22,27 +22,28 @@ Imports:
     dplyr (>= 1.1.0),
     reshape2,
     jsonlite,
-    utils,
-    nichenetr,
-    ccflowR
+    utils
 Suggests:
-    multinichenetr,
+    nichenetr (>= 2.2.1),
+    multinichenetr (>= 2.1.0),
+    ccflowR,
     presto,
     Seurat (>= 5.0.0),
     SeuratObject (>= 5.0.0),
     reticulate,
-    anndataR,
     hdf5r,
     Matrix,
     ggplot2,
     BiocParallel,
     knitr,
     rmarkdown,
-    IRkernel,
     testthat (>= 3.0.0)
+Remotes:
+    saeyslab/nichenetr,
+    saeyslab/multinichenetr
 Config/testthat/edition: 3
-URL: https://github.com/username/ContextNet
-BugReports: https://github.com/username/ContextNet/issues
+URL: https://github.com/settylab/ContextNet
+BugReports: https://github.com/settylab/ContextNet/issues
 Collate:
     'zzz.R'
     'config.R'
@@ -57,7 +58,6 @@ Collate:
     'network-integrate.R'
     'interop-nichenet.R'
     'interop-multinichenet.R'
-    'interop-anndata.R'
     'analyze.R'
     'export.R'
     'serialize.R'

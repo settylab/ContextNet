@@ -69,13 +69,15 @@ validate_path <- function(path, must_exist = TRUE, type = "any",
         ), call = call)
     }
 
-    if (must_exist && type == "file" && !file.info(path)$isdir == FALSE) {
+    is_dir <- isTRUE(file.info(path)$isdir)
+
+    if (must_exist && type == "file" && is_dir) {
         cli::cli_abort(c(
             "Expected a file but got a directory: {.path {path}}"
         ), call = call)
     }
 
-    if (must_exist && type == "directory" && !file.info(path)$isdir == TRUE) {
+    if (must_exist && type == "directory" && !is_dir) {
         cli::cli_abort(c(
             "Expected a directory but got a file: {.path {path}}"
         ), call = call)

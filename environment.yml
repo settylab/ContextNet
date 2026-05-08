@@ -1,0 +1,105 @@
+name: contextnet
+channels:
+  - conda-forge
+  - bioconda
+  # - defaults  # DISABLED: Company network cannot resolve repo.anaconda.com
+dependencies:
+  # ── Build toolchain ───────────────────────────────────────────────────────
+  # conda-forge's r-base configures Makeconf to use the conda C / C++ /
+  # Fortran toolchain. Without `compilers`, any source-only R package
+  # (zoo, RSQLite, mvtnorm, fracdiff, urca, ...) fails with
+  # "x86_64-conda-linux-gnu-cc: not found", which cascades through the
+  # multinichenetr Bioconductor dep tree. The `compilers` meta-package
+  # pulls in cc / cxx / fortran for the host platform.
+  - compilers
+  - make
+  - pkg-config
+  # System C libraries that R packages link against. Without these, source
+  # builds fail at compile time:
+  #   libpng    -> R `png` package (and downstream knitr/ggplot2 image paths)
+  #   libxml2   -> R `XML` package (and many Bioconductor annotation pkgs)
+  #   gsl       -> some Bioconductor stats packages
+  - libpng
+  - libxml2
+  - gsl
+  - bzip2
+  - zlib
+
+  # r-xml ships with the right libxml2 binding pre-built. The CRAN source
+  # build of XML calls xml2-config, which conda-forge libxml2 >= 2.14
+  # dropped — taking the conda-prebuilt r-xml avoids the entire problem.
+  - r-xml
+
+  # R base
+  - r-base>=4.1.0
+
+  # Required imports
+  - r-cli>=3.4.0
+  - r-rlang>=1.0.0
+  - r-dplyr>=1.1.0
+  - r-reshape2
+  - r-matrix>=1.5.0
+  - r-jsonlite>=1.8.0
+  - r-yaml>=2.3.0
+
+  # For testing
+  - r-testthat>=3.0.0
+  - r-devtools
+  - r-roxygen2
+  - r-rcmdcheck
+  - r-remotes
+
+  # Optional but useful for full testing
+  - r-ggplot2
+  - r-showtext        # Clean font rendering in notebooks (avoids text overlap)
+  - r-knitr
+  - r-rmarkdown
+
+  # For nichenetr (has many dependencies)
+  - r-tidyverse
+  - r-igraph
+  - r-randomforest
+  - r-caret
+  - r-catools
+  - r-data.table
+  - bioconductor-limma  # Bioconductor package uses different naming
+
+  # Dependencies that need conda install (compilation issues from R)
+  - nlopt
+  - r-nloptr
+  - r-lme4
+  - r-gdtools
+  - r-ggiraph
+  - r-shadowtext
+  - r-cairo
+  - r-locfit
+  - bioconductor-edger
+
+  # Jupyter support for R notebooks
+  - jupyter
+  - r-irkernel
+
+  # ----------------------------------------------------------------------------
+  # GitHub-only packages (NOT in conda-forge or bioconda)
+  # ----------------------------------------------------------------------------
+  # After `micromamba env create -f environment.yml`, run:
+  #
+  #   /usr/local/bin/micromamba run -n contextnet \
+  #       Rscript inst/bootstrap.R
+  #
+  # The bootstrap script installs the GitHub-only deps below at versions
+  # known to be compatible with this release of ContextNet:
+  #
+  #   nichenetr        >= 2.2.1   (saeyslab/nichenetr)
+  #   multinichenetr   >= 2.1.0   (saeyslab/multinichenetr)
+  #   ccflowR          (settylab/ccflowR, used for sankey visualization)
+  #
+  # It also installs Bioconductor deps that multinichenetr needs but that
+  # bioconda does not ship in versions compatible with multinichenetr 2.1.0:
+  #   muscat, scater, sva, scran
+  #
+  # NOTE: nichenetr and multinichenetr ship breaking API changes between
+  # minor versions (e.g. construct_ligand_target_matrix gained `lr_network`
+  # in 2.2.1). When upgrading, re-run the package tests; ContextNet's
+  # .assert_upstream_output() checks will surface column-name drift.
+  # ----------------------------------------------------------------------------
