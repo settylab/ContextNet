@@ -1201,16 +1201,3 @@ predict_ligand_activity_multinichenet <- function(object,
     sorted_targets <- names(sort(target_scores, decreasing = TRUE))
     utils::head(sorted_targets, top_n)
 }
-
-
-# ============================================================================
-# Backward compatibility aliases
-# ============================================================================
-
-#' @rdname predict_ligand_activity_nichenet
-#' @export
-analyze_communication <- predict_ligand_activity_nichenet
-
-#' @rdname predict_ligand_activity_multinichenet
-#' @export
-analyze_communication_multi <- predict_ligand_activity_multinichenet

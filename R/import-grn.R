@@ -36,7 +36,6 @@ import_grn <- function(x, format = "auto", ...) {
     # Auto-detect format
     if (format == "auto") {
         format <- .detect_grn_format(x)
-        .log_debug("Auto-detected format: {format}")
     }
 
     # Dispatch to appropriate importer

@@ -41,8 +41,9 @@ Thumbs.db
 *~
 test_file_path.txt
 
-# Python conda env (not part of R package)
-environment.yml
+# Conda env spec is the load-bearing reproducibility artifact and MUST
+# stay in version control. Listed here only for reference; do not re-ignore.
+# environment.yml
 
 # Coverage reports
 covr-report/

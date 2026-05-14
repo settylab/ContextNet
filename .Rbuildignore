@@ -10,6 +10,9 @@
 ^\.gitignore$
 ^\.github$
 
+# License (GPL-3 text shipped for GitHub display; CRAN already has it)
+^LICENSE\.md$
+
 # Development files
 ^dev$
 ^dev/

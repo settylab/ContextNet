@@ -4,6 +4,6 @@
 \alias{export}
 \title{Export Functions}
 \description{
-Functions for exporting ContextNet analysis results to various formats
-for visualization with ccflowR (directly in R) and other tools like Cytoscape.
+Functions for exporting ContextNet analysis results, including
+preparation for ccflowR Sankey visualization and saving results to RDS.
 }

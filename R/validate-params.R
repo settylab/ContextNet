@@ -1,69 +1,11 @@
-#' Parameter Validation Functions
+#' Parameter Validation Helpers
 #'
 #' @description
-#' Structured validation functions for user-facing function parameters.
-#' These functions provide informative error messages with suggestions.
+#' Validation helpers for user-facing function parameters.
 #'
 #' @name validate-params
 #' @keywords internal
 NULL
-
-
-#' Validate cell type exists in object
-#'
-#' @param object A Seurat object or similar
-#' @param cell_type Character string of cell type to validate
-#' @param group_col Column name containing cell type annotations
-#' @param call The calling environment for error reporting
-#'
-#' @return TRUE invisibly if valid, otherwise throws an error
-#'
-#' @export
-validate_cell_type <- function(object, cell_type, group_col,
-                                call = rlang::caller_env()) {
-    # Check if group_col exists
-    if (!group_col %in% colnames(object[[]])) {
-        cli::cli_abort(c(
-            "Column {.field {group_col}} not found in object metadata",
-            "i" = "Available columns: {.val {colnames(object[[]])}}"
-        ), call = call)
-    }
-
-    # Get available cell types
-    available <- unique(object[[group_col, drop = TRUE]])
-
-    # Check if cell type exists
-    if (!cell_type %in% available) {
-        cli::cli_abort(c(
-            "Cell type {.val {cell_type}} not found in column {.field {group_col}}",
-            "i" = "Available cell types: {.val {available}}"
-        ), call = call)
-    }
-
-    invisible(TRUE)
-}
-
-
-#' Validate network integration mode
-#'
-#' @param mode Character string specifying integration mode
-#' @param call The calling environment for error reporting
-#'
-#' @return TRUE invisibly if valid, otherwise throws an error
-#'
-#' @export
-validate_integration_mode <- function(mode, call = rlang::caller_env()) {
-    valid_modes <- c("weighted", "replace", "augment", "hierarchical")
-
-    if (!mode %in% valid_modes) {
-        cli::cli_abort(c(
-            "Invalid integration mode: {.val {mode}}",
-            "i" = "Valid modes: {.val {valid_modes}}"
-        ), call = call)
-    }
-
-    invisible(TRUE)
-}
 
 
 #' Validate weight parameters
@@ -76,7 +18,6 @@ validate_integration_mode <- function(mode, call = rlang::caller_env()) {
 #'
 #' @export
 validate_weights <- function(weights, normalize = TRUE, call = rlang::caller_env()) {
-    # Check type
     if (!is.numeric(weights)) {
         cli::cli_abort(c(
             "Weights must be numeric",
@@ -84,7 +25,6 @@ validate_weights <- function(weights, normalize = TRUE, call = rlang::caller_env
         ), call = call)
     }
 
-    # Check range
     if (any(weights < 0) || any(weights > 1)) {
         cli::cli_abort(c(
             "Weights must be in range [0, 1]",
@@ -92,7 +32,6 @@ validate_weights <- function(weights, normalize = TRUE, call = rlang::caller_env
         ), call = call)
     }
 
-    # Normalize if needed
     if (normalize && !isTRUE(all.equal(sum(weights), 1))) {
         cli::cli_warn(c(
             "Weights do not sum to 1",
@@ -102,99 +41,6 @@ validate_weights <- function(weights, normalize = TRUE, call = rlang::caller_env
     }
 
     invisible(weights)
-}
-
-
-#' Validate condition parameters
-#'
-#' @param object A Seurat object or similar
-#' @param condition_col Column name for condition grouping
-#' @param condition_oi Condition(s) of interest (character vector)
-#' @param condition_ref Reference condition(s) (character vector)
-#' @param call The calling environment for error reporting
-#'
-#' @return TRUE invisibly if valid, otherwise throws an error
-#'
-#' @keywords internal
-validate_conditions <- function(object, condition_col, condition_oi, condition_ref,
-                                 call = rlang::caller_env()) {
-    # Check if condition_col exists
-    if (!condition_col %in% colnames(object[[]])) {
-        cli::cli_abort(c(
-            "Column {.field {condition_col}} not found in object metadata",
-            "i" = "Available columns: {.val {colnames(object[[]])}}"
-        ), call = call)
-    }
-
-    # Get available conditions
-    available <- unique(object[[condition_col, drop = TRUE]])
-
-    # Check condition_oi (can be vector)
-    missing_oi <- setdiff(condition_oi, available)
-    if (length(missing_oi) > 0) {
-        cli::cli_abort(c(
-            "Condition(s) of interest not found in column {.field {condition_col}}",
-            "x" = "Missing: {.val {missing_oi}}",
-            "i" = "Available conditions: {.val {available}}"
-        ), call = call)
-    }
-
-    # Check condition_ref (can be vector)
-    missing_ref <- setdiff(condition_ref, available)
-    if (length(missing_ref) > 0) {
-        cli::cli_abort(c(
-            "Reference condition(s) not found in column {.field {condition_col}}",
-            "x" = "Missing: {.val {missing_ref}}",
-            "i" = "Available conditions: {.val {available}}"
-        ), call = call)
-    }
-
-    # Check no overlap between condition_oi and condition_ref
-    overlap <- intersect(condition_oi, condition_ref)
-    if (length(overlap) > 0) {
-        cli::cli_abort(c(
-            "Condition(s) cannot be in both condition_oi and condition_ref",
-            "x" = "Overlapping: {.val {overlap}}"
-        ), call = call)
-    }
-
-    invisible(TRUE)
-}
-
-
-#' Validate geneset_oi parameter
-#'
-#' @param geneset_oi Character vector of genes of interest
-#' @param call The calling environment for error reporting
-#'
-#' @return TRUE invisibly if valid, otherwise throws an error
-#'
-#' @keywords internal
-validate_geneset_oi <- function(geneset_oi, call = rlang::caller_env()) {
-    if (missing(geneset_oi) || is.null(geneset_oi)) {
-        cli::cli_abort(c(
-            "{.arg geneset_oi} is required but was not provided",
-            "x" = "You must provide a character vector of genes of interest",
-            "i" = "These are typically differentially expressed genes in the receiver",
-            "i" = "Example: {.code geneset_oi = rownames(de_results)[de_results$padj < 0.05]}"
-        ), call = call)
-    }
-
-    if (!is.character(geneset_oi)) {
-        cli::cli_abort(c(
-            "{.arg geneset_oi} must be a character vector",
-            "x" = "Got: {.cls {class(geneset_oi)}}"
-        ), call = call)
-    }
-
-    if (length(geneset_oi) == 0) {
-        cli::cli_abort(c(
-            "{.arg geneset_oi} is empty",
-            "x" = "You must provide at least one gene of interest"
-        ), call = call)
-    }
-
-    invisible(TRUE)
 }
 
 
@@ -223,53 +69,17 @@ validate_path <- function(path, must_exist = TRUE, type = "any",
         ), call = call)
     }
 
-    if (must_exist && type == "file" && !file.info(path)$isdir == FALSE) {
+    is_dir <- isTRUE(file.info(path)$isdir)
+
+    if (must_exist && type == "file" && is_dir) {
         cli::cli_abort(c(
             "Expected a file but got a directory: {.path {path}}"
         ), call = call)
     }
 
-    if (must_exist && type == "directory" && !file.info(path)$isdir == TRUE) {
+    if (must_exist && type == "directory" && !is_dir) {
         cli::cli_abort(c(
             "Expected a directory but got a file: {.path {path}}"
-        ), call = call)
-    }
-
-    invisible(TRUE)
-}
-
-
-#' Validate positive integer
-#'
-#' @param x Value to validate
-#' @param name Name of the parameter for error messages
-#' @param min_value Minimum allowed value (default: 1)
-#' @param max_value Maximum allowed value (default: Inf)
-#' @param call The calling environment for error reporting
-#'
-#' @return TRUE invisibly if valid, otherwise throws an error
-#'
-#' @keywords internal
-validate_positive_integer <- function(x, name, min_value = 1, max_value = Inf,
-                                       call = rlang::caller_env()) {
-    if (!is.numeric(x) || length(x) != 1) {
-        cli::cli_abort(c(
-            "{.arg {name}} must be a single number",
-            "x" = "Got: {.cls {class(x)}} of length {length(x)}"
-        ), call = call)
-    }
-
-    if (x != as.integer(x)) {
-        cli::cli_abort(c(
-            "{.arg {name}} must be an integer",
-            "x" = "Got: {x}"
-        ), call = call)
-    }
-
-    if (x < min_value || x > max_value) {
-        cli::cli_abort(c(
-            "{.arg {name}} must be between {min_value} and {max_value}",
-            "x" = "Got: {x}"
         ), call = call)
     }
 

@@ -117,9 +117,9 @@ ContextResult <- function(ligand_activities,
 
     # Determine source based on analysis type
     source <- if (analysis_type == "multi_condition") {
-        "analyze_communication_multi"
+        "predict_ligand_activity_multinichenet"
     } else {
-        "analyze_communication"
+        "predict_ligand_activity_nichenet"
     }
 
     # Create object

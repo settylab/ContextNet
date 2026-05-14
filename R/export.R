@@ -1,227 +1,11 @@
 #' Export Functions
 #'
 #' @description
-#' Functions for exporting ContextNet analysis results to various formats
-#' for visualization with ccflowR (directly in R) and other tools like Cytoscape.
+#' Functions for exporting ContextNet analysis results, including
+#' preparation for ccflowR Sankey visualization and saving results to RDS.
 #'
 #' @name export
 NULL
-
-
-#' Export network for Cytoscape visualization
-#'
-#' @description Export a ContextNetwork in GraphML or XGMML format for
-#'   visualization in Cytoscape.
-#'
-#' @param network A ContextNetwork object
-#' @param output_file Path to output file
-#' @param format Export format: "graphml" (default) or "xgmml"
-#' @param network_type Which network to export: "signaling" (default), "regulatory", or "both"
-#' @param verbose Logical, print progress messages (default: TRUE)
-#'
-#' @return The output file path (invisibly)
-#'
-#' @examples
-#' \dontrun{
-#' network <- integrate_networks(grn)
-#' export_to_cytoscape(network, "network.graphml")
-#' }
-#'
-#' @export
-export_to_cytoscape <- function(network,
-                                 output_file,
-                                 format = c("graphml", "xgmml"),
-                                 network_type = c("signaling", "regulatory", "both"),
-                                 verbose = TRUE) {
-    # ── Validate inputs ──
-    if (!inherits(network, "ContextNetwork")) {
-        cli::cli_abort(c(
-            "{.arg network} must be a ContextNetwork object",
-            "i" = "Create one with {.fn integrate_networks}"
-        ))
-    }
-
-    if (is.null(output_file) || !nzchar(output_file)) {
-        cli::cli_abort("{.arg output_file} is required")
-    }
-
-    format <- match.arg(format)
-    network_type <- match.arg(network_type)
-
-    if (verbose) cli::cli_h2("Exporting to Cytoscape ({format})")
-
-    # ── Get edges based on network type ──
-    if (network_type == "signaling") {
-        edges <- network@signaling_network
-        graph_name <- "Signaling_Network"
-    } else if (network_type == "regulatory") {
-        edges <- network@regulatory_network
-        graph_name <- "Regulatory_Network"
-    } else {
-        # Combine both networks
-        sig <- network@signaling_network
-        sig$network_type <- "signaling"
-
-        reg <- network@regulatory_network
-        reg$network_type <- "regulatory"
-
-        edges <- rbind(sig, reg)
-        graph_name <- "Combined_Network"
-    }
-
-    # Ensure required columns exist
-    if (!"weight" %in% colnames(edges)) {
-        edges$weight <- 1.0
-    }
-
-    if (verbose) {
-        cli::cli_alert_info("Exporting {nrow(edges)} edges")
-    }
-
-    # ── Write output ──
-    if (format == "graphml") {
-        .write_graphml(edges, output_file, graph_name)
-    } else {
-        .write_xgmml(edges, output_file, graph_name)
-    }
-
-    if (verbose) {
-        cli::cli_alert_success("Exported to {.path {output_file}}")
-    }
-
-    invisible(output_file)
-}
-
-
-#' Write GraphML format
-#'
-#' @param edges Edge data.frame with from, to, weight columns
-#' @param output_file Output file path
-#' @param graph_name Name for the graph
-#'
-#' @keywords internal
-.write_graphml <- function(edges, output_file, graph_name) {
-    # Get unique nodes
-    nodes <- unique(c(edges$from, edges$to))
-
-    # Build GraphML content
-    lines <- c(
-        '<?xml version="1.0" encoding="UTF-8"?>',
-        '<graphml xmlns="http://graphml.graphdrawing.org/xmlns"',
-        '         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"',
-        '         xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns',
-        '         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">',
-        '  <key id="weight" for="edge" attr.name="weight" attr.type="double"/>',
-        '  <key id="label" for="node" attr.name="label" attr.type="string"/>'
-    )
-
-    # Add network_type key if present
-    if ("network_type" %in% colnames(edges)) {
-        lines <- c(lines,
-            '  <key id="network_type" for="edge" attr.name="network_type" attr.type="string"/>'
-        )
-    }
-
-    lines <- c(lines,
-        paste0('  <graph id="', graph_name, '" edgedefault="directed">')
-    )
-
-    # Add nodes
-    for (node in nodes) {
-        lines <- c(lines,
-            paste0('    <node id="', node, '">'),
-            paste0('      <data key="label">', node, '</data>'),
-            '    </node>'
-        )
-    }
-
-    # Add edges
-    for (i in seq_len(nrow(edges))) {
-        edge_id <- paste0("e", i)
-        lines <- c(lines,
-            paste0('    <edge id="', edge_id, '" source="', edges$from[i], '" target="', edges$to[i], '">'),
-            paste0('      <data key="weight">', round(edges$weight[i], 6), '</data>')
-        )
-
-        if ("network_type" %in% colnames(edges)) {
-            lines <- c(lines,
-                paste0('      <data key="network_type">', edges$network_type[i], '</data>')
-            )
-        }
-
-        lines <- c(lines, '    </edge>')
-    }
-
-    lines <- c(lines,
-        '  </graph>',
-        '</graphml>'
-    )
-
-    writeLines(lines, output_file)
-}
-
-
-#' Write XGMML format
-#'
-#' @param edges Edge data.frame with from, to, weight columns
-#' @param output_file Output file path
-#' @param graph_name Name for the graph
-#'
-#' @keywords internal
-.write_xgmml <- function(edges, output_file, graph_name) {
-    # Get unique nodes
-    nodes <- unique(c(edges$from, edges$to))
-
-    # Build XGMML content
-    lines <- c(
-        '<?xml version="1.0" encoding="UTF-8"?>',
-        '<graph xmlns="http://www.cs.rpi.edu/XGMML"',
-        '       xmlns:dc="http://purl.org/dc/elements/1.1/"',
-        '       xmlns:xlink="http://www.w3.org/1999/xlink"',
-        '       xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"',
-        '       xmlns:cy="http://www.cytoscape.org"',
-        paste0('       label="', graph_name, '" directed="1">')
-    )
-
-    # Add nodes
-    for (i in seq_along(nodes)) {
-        node <- nodes[i]
-        lines <- c(lines,
-            paste0('  <node id="', i, '" label="', node, '">'),
-            paste0('    <att name="name" type="string" value="', node, '"/>'),
-            '  </node>'
-        )
-    }
-
-    # Create node ID lookup
-    node_ids <- setNames(seq_along(nodes), nodes)
-
-    # Add edges
-    for (i in seq_len(nrow(edges))) {
-        source_id <- node_ids[edges$from[i]]
-        target_id <- node_ids[edges$to[i]]
-        weight <- round(edges$weight[i], 6)
-
-        lines <- c(lines,
-            paste0('  <edge source="', source_id, '" target="', target_id, '">'),
-            paste0('    <att name="weight" type="real" value="', weight, '"/>'),
-            paste0('    <att name="interaction" type="string" value="regulates"/>')
-        )
-
-        if ("network_type" %in% colnames(edges)) {
-            lines <- c(lines,
-                paste0('    <att name="network_type" type="string" value="', edges$network_type[i], '"/>')
-            )
-        }
-
-        lines <- c(lines, '  </edge>')
-    }
-
-    lines <- c(lines, '</graph>')
-
-    writeLines(lines, output_file)
-}
-
 
 #' Prepare data for ccflowR visualization
 #'
@@ -230,7 +14,7 @@ export_to_cytoscape <- function(network,
 #'   an R package that can be used directly in R without needing to export
 #'   files to disk.
 #'
-#' @param result A ContextResult object from analyze_communication()
+#' @param result A ContextResult object from predict_ligand_activity_nichenet()
 #' @param expression_data Seurat object for computing z-score expression
 #'   probabilities per cell type. Required for the full NicheNet weighted
 #'   score pipeline. If NULL, falls back to normalized AUPR only.
@@ -333,7 +117,7 @@ prepare_for_ccflowr <- function(result,
     if (!inherits(result, "ContextResult")) {
         cli::cli_abort(c(
             "{.arg result} must be a ContextResult object",
-            "i" = "Create one with {.fn analyze_communication}"
+            "i" = "Create one with {.fn predict_ligand_activity_nichenet}"
         ))
     }
 
@@ -1169,44 +953,3 @@ combine_sankey_data <- function(..., threshold_quantile = 0.95) {
     result
 }
 
-
-#' Export ContextResult to RDS file
-#'
-#' @description Simple export of a ContextResult object as an RDS file
-#'   for later reloading in R.
-#'
-#' @param result A ContextResult object
-#' @param output_file Path to output RDS file
-#' @param verbose Logical, print progress messages (default: TRUE)
-#'
-#' @return The output file path (invisibly)
-#'
-#' @examples
-#' \dontrun{
-#' result <- analyze_communication(seurat_obj, network, ...)
-#' export_result(result, "analysis_result.rds")
-#' }
-#'
-#' @export
-export_result <- function(result, output_file, verbose = TRUE) {
-    # ── Validate inputs ──
-    if (!inherits(result, "ContextResult")) {
-        cli::cli_abort(c(
-            "{.arg result} must be a ContextResult object",
-            "i" = "Create one with {.fn analyze_communication}"
-        ))
-    }
-
-    if (is.null(output_file) || !nzchar(output_file)) {
-        cli::cli_abort("{.arg output_file} is required")
-    }
-
-    # ── Save ──
-    saveRDS(result, output_file)
-
-    if (verbose) {
-        cli::cli_alert_success("Exported ContextResult to {.path {output_file}}")
-    }
-
-    invisible(output_file)
-}

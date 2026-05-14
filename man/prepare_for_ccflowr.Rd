@@ -14,7 +14,7 @@ prepare_for_ccflowr(
 )
 }
 \arguments{
-\item{result}{A ContextResult object from analyze_communication()}
+\item{result}{A ContextResult object from predict_ligand_activity_nichenet()}
 
 \item{expression_data}{Optional expression matrix or Seurat object for
 extracting ligand/receptor expression levels}
@@ -57,7 +57,7 @@ are included: prioritization_score, scaled_lfc_ligand, scaled_lfc_receptor.
 \examples{
 \dontrun{
 # After running analysis
-result <- analyze_communication(seurat_obj, network, ...)
+result <- predict_ligand_activity_nichenet(seurat_obj, network, ...)
 
 # Prepare for ccflowR (direct R package integration)
 sankey_data <- prepare_for_ccflowr(result, seurat_obj,

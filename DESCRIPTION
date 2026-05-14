@@ -2,14 +2,14 @@ Package: ContextNet
 Title: scMultiomics-Enhanced Cell-Cell Communication Inference
 Version: 0.1.0
 Authors@R:
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"),
+    person("Yin", "Huang", , "first.last@example.com", role = c("aut", "cre"),
            comment = c(ORCID = "YOUR-ORCID-ID"))
 Description: ContextNet extends the NicheNet framework by incorporating gene
     regulatory networks (GRNs) constructed from single-cell multiomics data.
     The package provides GRN import from various sources, network integration
     with NicheNet prior knowledge networks, and streamlined analysis functions
     for cell-cell communication inference.
-License: MIT + file LICENSE
+License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
@@ -24,28 +24,28 @@ Imports:
     jsonlite,
     utils
 Suggests:
-    nichenetr,
-    multinichenetr,
+    nichenetr (>= 2.2.1),
+    multinichenetr (>= 2.1.0),
+    ccflowR,
     presto,
     Seurat (>= 5.0.0),
     SeuratObject (>= 5.0.0),
-    ccflowR,
     reticulate,
-    anndataR,
     hdf5r,
     Matrix,
     ggplot2,
     BiocParallel,
     knitr,
     rmarkdown,
-    IRkernel,
     testthat (>= 3.0.0)
+Remotes:
+    saeyslab/nichenetr,
+    saeyslab/multinichenetr
 Config/testthat/edition: 3
-URL: https://github.com/username/ContextNet
-BugReports: https://github.com/username/ContextNet/issues
+URL: https://github.com/settylab/ContextNet
+BugReports: https://github.com/settylab/ContextNet/issues
 Collate:
     'zzz.R'
-    'logging.R'
     'config.R'
     'validate-params.R'
     'validate-data.R'
@@ -58,7 +58,6 @@ Collate:
     'network-integrate.R'
     'interop-nichenet.R'
     'interop-multinichenet.R'
-    'interop-anndata.R'
     'analyze.R'
     'export.R'
     'serialize.R'
