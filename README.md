@@ -18,12 +18,33 @@ The framework has three components:
 
 ## Installation
 
-```r
-# Install ContextNet (includes NicheNet and MultiNicheNet)
-remotes::install_github("settylab/ContextNet", dependencies = TRUE)
+The recommended path is the bundled micromamba environment, which produces a reproducible install of R, every Bioconductor and CRAN dep, and the GitHub-only peers (`nichenetr`, `multinichenetr`, `ccflowR`):
+
+```bash
+# 1. Create the conda environment (R + system libs + most CRAN/Bioconductor deps)
+micromamba create -n contextnet -f environment.yml -y
+
+# 2. Bootstrap the GitHub-only deps and ContextNet itself (idempotent)
+#    ccflowR is in a private repository; export a PAT with `repo` scope.
+export GITHUB_PAT=$(gh auth token)         # or paste a classic PAT
+micromamba run -n contextnet Rscript inst/bootstrap.R
 ```
 
-For a fully reproducible environment using **micromamba** (recommended for development), see the [Micromamba Installation Guide](vignettes/installation-micromamba.md).
+The bootstrap script installs the GitHub peers at audited pins, including `settylab/ccflowR` at commit `6056c0fe1d1cecfc68aa059bacfbe6bd16725231`. Without `GITHUB_PAT` it skips `ccflowR` (the Sankey visualization in tutorials 02/03 will be unavailable) and continues. See the [Micromamba Installation Guide](vignettes/installation-micromamba.md) for the full reference, manual install steps, and troubleshooting.
+
+### Lightweight install (CRAN-only path)
+
+If you don't need the multinichenetr Bioconductor stack and have a working R toolchain, you can install ContextNet alone with `remotes`. You will still need to install `ccflowR` manually if you want Sankey visualization:
+
+```r
+# In an R session with `remotes` and a working compiler toolchain
+remotes::install_github("settylab/ContextNet", dependencies = TRUE)
+
+# Optional: ccflowR for Sankey visualization (private repo — set GITHUB_PAT first)
+Sys.setenv(GITHUB_PAT = "<your-token>")
+remotes::install_github("settylab/ccflowR",
+                        ref = "6056c0fe1d1cecfc68aa059bacfbe6bd16725231")
+```
 
 ### Verify installation
 
@@ -31,6 +52,17 @@ For a fully reproducible environment using **micromamba** (recommended for devel
 library(ContextNet)
 check_ecosystem(verbose = TRUE)
 ```
+
+### Known installation issues
+
+| Symptom | Cause / Fix |
+|---|---|
+| `remotes::install_github('settylab/ccflowR')` returns 404 | Private repository. Set `GITHUB_PAT` (`$(gh auth token)` works if you have `gh` logged in) and retry. ContextNet works without ccflowR; you only lose the tutorial Sankey visualization. |
+| `nloptr` fails to compile from source | The micromamba env ships `nlopt` + `r-nloptr` pre-built. If you're outside the env: `micromamba install -n contextnet -c conda-forge nlopt r-nloptr r-lme4 -y`. |
+| `hdf5r` configure: `hdf5 does not seem to be installed` | The micromamba env ships `r-hdf5r` pre-built with bundled HDF5. Recreate the env from `environment.yml`. Outside the env: install your distro's `libhdf5-dev` / `hdf5-devel`, or `brew install hdf5`. |
+| `failed to lock directory` after a killed install | Stale `00LOCK-<pkg>` directories. Re-run `Rscript inst/bootstrap.R` (it clears them automatically) or `rm -rf $CONDA_PREFIX/lib/R/library/00LOCK-*`. |
+| `repo.anaconda.com` unreachable | The shipped `environment.yml` only uses `conda-forge` and `bioconda`. If a global `~/.condarc` adds the default channel, pass `--override-channels` to `micromamba create`. |
+| macOS: "Operation not permitted" on the working tree | Extended attributes blocking the build: `xattr -cr /path/to/ContextNet`. |
 
 ## Quick Start
 
