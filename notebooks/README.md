@@ -40,7 +40,7 @@ These are **full local-data tutorials**: they read inputs that are present local
 
 The NicheNet priors are distributed with the official NicheNet v2 tutorials ([Zenodo 7074291](https://zenodo.org/record/7074291)) and can be fetched once with `load_nichenet_data(cache_dir = "data", version = "v2")`. The GRN and Seurat object are your own data; the tutorials use a head-and-neck squamous cell carcinoma (HNSCC) dataset as the worked example.
 
-**Why no bundled example data?** A realistic run requires a multi-cell-type Seurat object plus the full NicheNet priors (>250 MB for the ligand-target matrix alone), which is too large to ship in the package. If you want a fast smoke test, subset your own Seurat object before running, for example:
+**Why no bundled example data?** A realistic run requires a multi-cell-type Seurat object plus the full NicheNet priors — the local `data/` directory these tutorials read is **~1.8 GB in total** (the Seurat object alone is ~1.2 GB; the optional NicheNet ligand-target matrix is >250 MB), far too large to ship in the package. Provision this space before you start. If you want a fast smoke test, subset your own Seurat object before running, for example:
 
 ```r
 # Small, fast example: keep a few cell types and down-sample cells.
