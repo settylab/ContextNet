@@ -95,7 +95,7 @@ ligand_activities(result)
 
 ### Sankey visualization with ccflowR
 
-ContextNet pairs with [ccflowR](https://github.com/settylab/ccflowR) to render cell-cell communication as a Sankey diagram (sender → ligand → receptor → target → receiver).
+ContextNet pairs with [ccflowR](https://github.com/settylab/ccflowR) to render cell-cell communication as a Sankey diagram (sender → ligand → receptor → target → receiver). ccflowR is an **optional** dependency: `prepare_for_ccflowr()` + `combine_sankey_data()` build the Sankey data table from base ContextNet, and only `sankey_flow()` requires ccflowR. The tutorials run end to end without it.
 
 ```r
 library(ccflowR)
@@ -118,6 +118,8 @@ sankey_flow(sankey_data, cell_colors)
 | [01 - Getting Started](notebooks/01-getting-started.ipynb) | Concepts, installation, and quick 4-step workflow |
 | [02 - Standard Workflow](notebooks/02-standard-workflow.ipynb) | Full NicheNet workflow with Sankey visualization |
 | [03 - Multi-Condition Workflow](notebooks/03-multicondition-workflow.ipynb) | Differential analysis with MultiNicheNet and biological replicates |
+
+These are full local-data tutorials: they read a context-specific GRN, a Seurat object, and the NicheNet priors from a local `data/` directory and do not download anything while running. See [notebooks/README.md](notebooks/README.md) for data requirements, kernel setup, and an example-data strategy.
 
 ## Key Functions
 

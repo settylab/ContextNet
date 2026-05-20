@@ -10,6 +10,48 @@ The tutorials are organized around biological questions rather than package func
 | [02 Standard Workflow](02-standard-workflow.ipynb) | Which sender ligands may explain basal-cell changes between C and N tissue? | Within-receiver condition comparison | ligand activity, target heatmaps, ccflowR Sankey paths | You have a single contrast and want full interpretation/visualization |
 | [03 Multi-Condition Workflow](03-multicondition-workflow.ipynb) | Which communication programs change reproducibly across samples? | Replicate-aware MultiNicheNet pseudobulk | prioritization table and ccflowR Sankey paths | You have biological replicates and need sample-aware inference |
 
+## Running the Notebooks
+
+- **Kernel.** The notebooks use the standard IRkernel, registered under the name `ir`. Install it once from R with `IRkernel::installspec()` (see the [micromamba installation guide](../vignettes/installation-micromamba.md)). If your kernel has a different name, either select it in Jupyter or override it on the command line:
+
+  ```bash
+  jupyter nbconvert --to notebook --execute \
+      --ExecutePreprocessor.kernel_name=ir \
+      notebooks/01-getting-started.ipynb
+  ```
+
+- **Working directory.** Run a notebook from the repository root or from the `notebooks/` directory. The first setup cell normalizes the working directory to the repository root, so all data paths are relative and portable.
+
+- **Optional visualization.** [ccflowR](https://github.com/settylab/ccflowR) is optional. Every notebook builds the Sankey *data table* with `prepare_for_ccflowr()` + `combine_sankey_data()` and prints it, then only renders the diagram when ccflowR is installed (`requireNamespace("ccflowR")`). The tutorials run end to end without it.
+
+- **Outputs are not committed.** Notebooks are stored without executed outputs, so the repository never carries stale results or private absolute paths. Run a notebook locally to regenerate plots and tables.
+
+## Data Requirements and Example-Data Strategy
+
+These are **full local-data tutorials**: they read inputs that are present locally rather than shipping a bundled toy dataset. To run them as written you need, under `data/`:
+
+| Input | File (as used in the tutorials) | Purpose |
+|-------|----------------------------------|---------|
+| Context-specific GRN | `gene_x_tf.csv` | gene × TF regulatory weights from a GRN inference workflow |
+| Seurat object | `seurat_obj.rds` | expression + cell-type / condition / sample metadata |
+| NicheNet L-R prior | `lr_network_human_21122021.rds` | ligand-receptor interactions |
+| NicheNet weighted prior | `weighted_networks_nsga2r_final.rds` | signaling + regulatory priors for propagation |
+| NicheNet L-T matrix (optional) | `ligand_target_matrix_nsga2r_final.rds` | reference only; not used by integration |
+
+The NicheNet priors are distributed with the official NicheNet v2 tutorials ([Zenodo 7074291](https://zenodo.org/record/7074291)) and can be fetched once with `load_nichenet_data(cache_dir = "data", version = "v2")`. The GRN and Seurat object are your own data; the tutorials use a head-and-neck squamous cell carcinoma (HNSCC) dataset as the worked example.
+
+**Why no bundled example data?** A realistic run requires a multi-cell-type Seurat object plus the full NicheNet priors — the local `data/` directory these tutorials read is **~1.8 GB in total** (the Seurat object alone is ~1.2 GB; the optional NicheNet ligand-target matrix is >250 MB), far too large to ship in the package. Provision this space before you start. If you want a fast smoke test, subset your own Seurat object before running, for example:
+
+```r
+# Small, fast example: keep a few cell types and down-sample cells.
+keep <- WhichCells(seurat_obj, expression = Fine_Cell_Types %in%
+                   c("basal", "parabasal", "suprabasal", "Fibroblast", "Myeloid"))
+small <- subset(seurat_obj, cells = sample(keep, min(8000, length(keep))))
+saveRDS(small, "data/seurat_obj_small.rds")
+```
+
+Point `SEURAT_FILE` at the subset. Ligand activity rankings from a small subset are for pipeline testing only, not biological interpretation.
+
 ## How to Interpret the Object Model
 
 ContextNet separates the analysis into three object classes:
@@ -53,9 +95,19 @@ ccflowR::sankey_flow(sankey_data, cell_colors)
 
 Read a ccflowR path as a prioritized model-supported route from sender to receiver. It is not direct proof of secretion, receptor binding, or spatial contact. The strongest interpretation comes when the same path is supported by ligand expression, receptor expression, target-gene changes, regulatory potential, and external biological evidence.
 
+## Troubleshooting
+
+| Symptom | Likely cause | What to try |
+|---------|--------------|-------------|
+| Few GRN targets overlap the expression object | Species or gene-symbol mismatch (e.g. mouse vs human, Ensembl IDs vs symbols) | Harmonize gene naming before `import_grn()`; the notebooks warn when overlap is low |
+| Empty or near-empty ligand-target matrix | GRN is too sparse or all-zero | Inspect `edges(grn)` density; relax GRN inference thresholds upstream |
+| Tiny receiver gene set / unstable ranking | DE contrast yields few genes | Loosen `logfc_threshold` / `pval_threshold`, or pass a curated `geneset_oi` |
+| No receptors for top ligands | Receptors not expressed in the receiver, or absent from the L-R prior | Check receptor expression; confirm the correct NicheNet prior version |
+| ccflowR Sankey is empty | Threshold too strict | Lower `threshold_quantile` in `combine_sankey_data()` |
+| MultiNicheNet FORK/socket errors | Parallel backend issues on the platform | Set `n_cores = 1` (Tutorial 03 default) |
+
 ## Remaining Documentation Gaps to Address Next
 
-- Add small bundled example data so the notebooks can run without private local paths.
 - Add a dedicated GRN-input tutorial covering contextnet-pipeline, SCENIC+, Pando, and custom edge tables.
-- Add a troubleshooting section for gene-name mismatches, sparse GRNs, missing receptors, and empty ccflowR outputs.
 - Add a comparison tutorial that runs the same contrast with the default NicheNet matrix and the ContextNet matrix to show what biological specificity changes.
+- Consider a packaged minimal example object (`inst/extdata/`) once a sufficiently small, shareable dataset is available.
