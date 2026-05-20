@@ -40,7 +40,9 @@ Suggests:
     testthat (>= 3.0.0)
 Remotes:
     saeyslab/nichenetr,
-    saeyslab/multinichenetr
+    saeyslab/multinichenetr,
+    immunogenomics/presto,
+    settylab/ccflowR@6056c0fe1d1cecfc68aa059bacfbe6bd16725231
 Config/testthat/edition: 3
 URL: https://github.com/settylab/ContextNet
 BugReports: https://github.com/settylab/ContextNet/issues
