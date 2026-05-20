@@ -64,6 +64,22 @@ micromamba create -n contextnet -f environment.yml --override-channels -y
 
 Some packages are not available via conda and must be installed from R or GitHub.
 
+### Recommended: one-shot bootstrap
+
+The package ships an idempotent bootstrap script that installs the Bioconductor
+and GitHub-only dependencies that `environment.yml` cannot supply, then installs
+ContextNet itself and runs `check_ecosystem()`. Run it once after creating the
+environment:
+
+```bash
+micromamba activate contextnet
+Rscript inst/bootstrap.R
+```
+
+It is safe to re-run after upgrading any single dependency; packages already at a
+compatible version are skipped. If you prefer to install the pieces by hand, the
+manual steps below do the same thing.
+
 ### Activate the environment
 
 ```bash
@@ -110,6 +126,28 @@ micromamba run -n contextnet R -e "
   remotes::install_local('.', dependencies = TRUE, upgrade = 'never')
 "
 ```
+
+### Register the Jupyter R kernel (for the tutorials)
+
+The tutorial notebooks reference the standard IRkernel under the name `ir`.
+Register it once so Jupyter (and `nbconvert`) can find it:
+
+```bash
+micromamba run -n contextnet R -e "IRkernel::installspec(name = 'ir', displayname = 'R')"
+```
+
+If you run the notebooks under a different kernel name, either select it in
+Jupyter or override it on the command line:
+
+```bash
+jupyter nbconvert --to notebook --execute \
+    --ExecutePreprocessor.kernel_name=ir \
+    notebooks/01-getting-started.ipynb
+```
+
+The tutorials read data from a local `data/` directory and do not download
+anything while running; see [notebooks/README.md](../notebooks/README.md) for the
+exact data requirements and an example-data strategy.
 
 ## Verify the Installation
 
