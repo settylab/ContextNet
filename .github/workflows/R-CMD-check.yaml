@@ -43,11 +43,13 @@ jobs:
         # are intentionally omitted; ccflowR is namespace-guarded everywhere.
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          # No `needs: check` — that pulls Suggests (incl. the private,
+          # unresolvable ccflowR) into the solve. dependencies: '"hard"' +
+          # explicit rcmdcheck/testthat installs exactly what the check needs.
           dependencies: '"hard"'
           extra-packages: |
             any::rcmdcheck
             any::testthat
-          needs: check
 
       - name: Check package
         uses: r-lib/actions/check-r-package@v2
@@ -71,7 +73,6 @@ jobs:
           extra-packages: |
             any::covr
             any::testthat
-          needs: coverage
 
       - name: Test coverage
         run: |
