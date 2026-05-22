@@ -47,7 +47,6 @@ jobs:
           extra-packages: |
             any::rcmdcheck
             any::testthat
-            any::Seurat
           needs: check
 
       - name: Check package
@@ -72,7 +71,6 @@ jobs:
           extra-packages: |
             any::covr
             any::testthat
-            any::Seurat
           needs: coverage
 
       - name: Test coverage
