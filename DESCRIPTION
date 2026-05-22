@@ -26,6 +26,7 @@ Imports:
 Suggests:
     nichenetr (>= 2.2.1),
     multinichenetr (>= 2.1.0),
+    ccflowR,
     presto,
     Seurat (>= 5.0.0),
     SeuratObject (>= 5.0.0),

@@ -9,6 +9,11 @@ on:
 jobs:
   R-CMD-check:
     runs-on: ${{ matrix.os }}
+    env:
+      # ccflowR is a private, optional Suggests that CI cannot clone. All
+      # ccflowR usage is guarded (requireNamespace / \dontrun / skipped tests),
+      # so treat unavailable Suggests as NOTEs rather than failing the check.
+      _R_CHECK_FORCE_SUGGESTS_: false
     strategy:
       fail-fast: false
       matrix:
@@ -31,9 +36,18 @@ jobs:
           use-public-rspm: true
 
       - name: Setup R dependencies
+        # Install hard deps + the public packages the check actually exercises.
+        # dependencies: '"hard"' (not "all") so pak does not try to clone the
+        # private settylab/ccflowR Suggests (no Remote -> unresolvable in CI).
+        # Suggests that skip in CI (nichenetr/multinichenetr need local data)
+        # are intentionally omitted; ccflowR is namespace-guarded everywhere.
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::rcmdcheck
+          dependencies: '"hard"'
+          extra-packages: |
+            any::rcmdcheck
+            any::testthat
+            any::Seurat
           needs: check
 
       - name: Check package
@@ -54,7 +68,11 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::covr
+          dependencies: '"hard"'
+          extra-packages: |
+            any::covr
+            any::testthat
+            any::Seurat
           needs: coverage
 
       - name: Test coverage
@@ -77,6 +95,7 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          dependencies: '"hard"'
           extra-packages: any::lintr
           needs: lint
 
