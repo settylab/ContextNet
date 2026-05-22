@@ -35,6 +35,10 @@ jobs:
         with:
           extra-packages: any::rcmdcheck
           needs: check
+          # Install only hard deps (Depends/Imports/LinkingTo), not Suggests:
+          # ccflowR is a private repo CI can't clone, and presto is GitHub-only.
+          # Suggests-dependent examples/tests are namespace-guarded and skip.
+          dependencies: '"hard"'
 
       - name: Check package
         uses: r-lib/actions/check-r-package@v2
@@ -56,6 +60,7 @@ jobs:
         with:
           extra-packages: any::covr
           needs: coverage
+          dependencies: '"hard"'
 
       - name: Test coverage
         run: |
@@ -79,6 +84,7 @@ jobs:
         with:
           extra-packages: any::lintr
           needs: lint
+          dependencies: '"hard"'
 
       - name: Lint
         run: lintr::lint_package()
