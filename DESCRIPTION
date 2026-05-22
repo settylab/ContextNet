@@ -26,7 +26,6 @@ Imports:
 Suggests:
     nichenetr (>= 2.2.1),
     multinichenetr (>= 2.1.0),
-    ccflowR,
     presto,
     Seurat (>= 5.0.0),
     SeuratObject (>= 5.0.0),
@@ -41,8 +40,7 @@ Suggests:
 Remotes:
     saeyslab/nichenetr,
     saeyslab/multinichenetr,
-    immunogenomics/presto,
-    settylab/ccflowR@6056c0fe1d1cecfc68aa059bacfbe6bd16725231
+    immunogenomics/presto
 Config/testthat/edition: 3
 URL: https://github.com/settylab/ContextNet
 BugReports: https://github.com/settylab/ContextNet/issues
