@@ -15,14 +15,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # R >= 4.3 only: the package needs SeuratObject (>= 5.0.0), which pulls
+        # Matrix (>= 1.6.4) requiring R >= 4.4 — R 4.2 cannot solve the graph.
         os: [ubuntu-latest, macos-latest, windows-latest]
-        r-version: ['4.2', '4.3', '4.4']
-        exclude:
-          # Reduce matrix size
-          - os: macos-latest
-            r-version: '4.2'
-          - os: windows-latest
-            r-version: '4.2'
+        r-version: ['4.3', '4.4']
 
     steps:
       - uses: actions/checkout@v4
