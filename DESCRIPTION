@@ -6,7 +6,7 @@ Authors@R:
            comment = c(ORCID = "YOUR-ORCID-ID"))
 Description: ContextNet extends the NicheNet framework by incorporating gene
     regulatory networks (GRNs) constructed from single-cell multiomics data.
-    The package provides GRN import from various sources, network integration
+    The package provides gene regulatory network (GRN) import from various sources, network integration
     with NicheNet prior knowledge networks, and streamlined analysis functions
     for cell-cell communication inference.
 License: GPL (>= 3)
@@ -41,8 +41,7 @@ Suggests:
 Remotes:
     saeyslab/nichenetr,
     saeyslab/multinichenetr,
-    immunogenomics/presto,
-    settylab/ccflowR@6056c0fe1d1cecfc68aa059bacfbe6bd16725231
+    immunogenomics/presto
 Config/testthat/edition: 3
 URL: https://github.com/settylab/ContextNet
 BugReports: https://github.com/settylab/ContextNet/issues

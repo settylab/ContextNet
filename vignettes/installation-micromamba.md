@@ -1,327 +1,186 @@
 # Installation with Micromamba
 
-This guide covers how to install and manage the ContextNet development environment using [micromamba](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html), a fast, lightweight package manager compatible with conda environments. It is intentionally limited to installation and environment management; the biological questions and example analyses start in the tutorial notebooks after this setup is complete.
+This guide covers how to install the ContextNet R environment with micromamba. It is intentionally limited to installation, kernel registration, verification, and debugging. Biological questions and interpretation start in the tutorial notebooks and R Markdown files after the environment works.
 
 ## Why Micromamba?
 
-ContextNet depends on R, Bioconductor packages, and compiled libraries (e.g., `nlopt`, `Cairo`) that are difficult to install from source. Micromamba resolves these as pre-built binaries from conda-forge and bioconda, avoiding common compilation failures on macOS and Linux.
+ContextNet depends on R, Bioconductor packages, GitHub-only R packages, and compiled system libraries such as `nlopt`, `Cairo`, and HDF5. Micromamba installs most of these as pre-built binaries from conda-forge and bioconda, which avoids common source-build failures on Linux and macOS.
 
 ## Prerequisites
 
-### Install micromamba
-
-**macOS (Homebrew):**
+Install micromamba, then restart your shell.
 
 ```bash
+# macOS with Homebrew
 brew install micromamba
-```
 
-**Linux / macOS (curl):**
-
-```bash
+# Linux or macOS with the installer
 "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
-```
 
-**Windows:** See [official docs](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html).
+# Initialize your shell, then restart the terminal
+micromamba shell init -s bash  # or zsh/fish
 
-After installation, initialize your shell:
-
-```bash
-micromamba shell init -s bash  # or zsh, fish
-# Restart your terminal
-```
-
-Verify:
-
-```bash
 micromamba --version
 ```
 
+Windows users should follow the official micromamba installation documentation.
+
 ## Create the Environment
 
-ContextNet provides an `environment.yml` that pins all required R and system dependencies.
+Run from the ContextNet repository root:
 
 ```bash
-# From the ContextNet project root
 micromamba create -n contextnet -f environment.yml -y
 ```
 
 This installs:
-- R (>= 4.1.0) with all required and suggested CRAN packages
-- Bioconductor packages (limma, edgeR, locfit)
-- System libraries (nlopt, Cairo, gdtools)
-- Jupyter + IRkernel for running tutorial notebooks
 
-### Troubleshooting: Channel errors
+- R and the R build toolchain,
+- required CRAN packages,
+- required Bioconductor packages available from conda,
+- system libraries needed by R packages,
+- Jupyter and IRkernel for notebooks,
+- `rmarkdown` and `knitr` for RStudio/R Markdown users.
 
-If you see errors resolving `repo.anaconda.com`, your network may block the Anaconda default channel. The provided `environment.yml` already restricts channels to `conda-forge` and `bioconda`. If you have a global `.condarc` or `~/.mambarc` that adds default channels, override it:
+If a global conda configuration adds the Anaconda default channel and your network blocks it, override channels explicitly:
 
 ```bash
 micromamba create -n contextnet -f environment.yml --override-channels -y
 ```
 
-## Install Additional Dependencies
+## Install ContextNet and Required GitHub Packages
 
-Some packages are not available via conda and must be installed from R or GitHub. ContextNet ships a bootstrap script that handles this in one idempotent step.
-
-### Recommended: one-shot bootstrap
-
-The package ships an idempotent bootstrap script that installs the Bioconductor
-and GitHub-only dependencies that `environment.yml` cannot supply, then installs
-ContextNet itself and runs `check_ecosystem()`. Run it once after creating the
-environment:
+After creating the environment, run the bootstrap script. It installs required GitHub packages (`nichenetr`, `multinichenetr`), Bioconductor dependencies needed by MultiNicheNet, and ContextNet itself from the local checkout.
 
 ```bash
-micromamba activate contextnet
-Rscript inst/bootstrap.R
-```
-
-It is safe to re-run after upgrading any single dependency; packages already at a
-compatible version are skipped. If you prefer to install the pieces by hand, the
-manual steps below do the same thing.
-
-### Activate the environment
-
-```bash
-micromamba activate contextnet
-```
-
-Or, to run commands without activating:
-
-```bash
-micromamba run -n contextnet R -e "<command>"
-```
-
-### Run the bootstrap script
-
-From the ContextNet project root:
-
-```bash
-# ccflowR (Sankey river visualization) is in a private repository.
-# Export a GitHub PAT with `repo` scope before bootstrapping if you
-# want Tutorials 02/03 to render exactly as committed.
-export GITHUB_PAT=$(gh auth token)   # or paste a classic PAT
-
 micromamba run -n contextnet Rscript inst/bootstrap.R
 ```
 
-The bootstrap script:
+The bootstrap is idempotent. It skips packages that already satisfy the required version, clears stale `00LOCK-*` directories from interrupted installs, and then runs `check_ecosystem()` so you can see which optional components are available.
 
-1. Ensures `remotes` and `BiocManager` are installed.
-2. Installs the Bioconductor deps `multinichenetr` requires that bioconda does not ship in compatible versions: `muscat`, `scater`, `sva`, `scran`.
-3. Installs the GitHub-only packages at pinned versions:
-   - `saeyslab/nichenetr` (>= 2.2.1)
-   - `saeyslab/multinichenetr` (>= 2.1.0)
-   - `settylab/ccflowR` at the audited commit SHA (requires `GITHUB_PAT`; needed for tutorial river plots)
-4. Installs `ContextNet` itself from the local source.
-5. Runs `check_ecosystem()` to verify every component loads.
+The bootstrap uses hard dependencies for the ContextNet install. That keeps installation reliable for external users because optional visualization packages do not block the core package install.
 
-The script is idempotent — re-run it after upgrading a single dependency and it will reinstall only what changed. It also clears stale `00LOCK-*` directories from a previous interrupted install, so killing it mid-flight is recoverable.
+## Optional: Install ccflowR for Sankey/River Plots
 
-### Manual install (advanced / offline / debugging)
+`ccflowR` is optional visualization support. It renders sender -> ligand -> receptor -> receiver communication paths as Sankey/river plots, which is helpful when the result table contains many plausible cell-cell communication routes and you need to inspect the highest-priority paths. ContextNet core analysis does not require `ccflowR`; only Sankey/river plot cells require it.
 
-If you need to inspect each step or you cannot run the bootstrap, the equivalent commands are:
+Once the `settylab/ccflowR` repository is public, install it into the same environment:
 
 ```bash
-# Bioconductor deps (multinichenetr's compatible-version requirements)
-micromamba run -n contextnet R -e "
-  BiocManager::install(
-    c('muscat', 'scater', 'sva', 'scran'),
-    ask = FALSE, update = FALSE
-  )
-"
-
-# GitHub packages — ccflowR at audited commit SHA, requires GITHUB_PAT
-micromamba run -n contextnet R -e "
-  remotes::install_github('saeyslab/nichenetr', upgrade = 'never')
-  remotes::install_github('saeyslab/multinichenetr', upgrade = 'never')
-  remotes::install_github('settylab/ccflowR',
-                          ref = '6056c0fe1d1cecfc68aa059bacfbe6bd16725231',
-                          upgrade = 'never')
-"
-
-# ContextNet itself (from a local checkout)
-micromamba run -n contextnet R -e "
-  remotes::install_local('.', dependencies = TRUE, upgrade = 'never')
-"
+micromamba run -n contextnet R -e "remotes::install_github('settylab/ccflowR', upgrade = 'never')"
 ```
 
-### Register the ContextNet R kernel (for the tutorials)
+Or opt in during bootstrap:
 
-The tutorial notebooks use an R kernel named `contextnet_r`, displayed in
-Jupyter as **ContextNet R**. Register it once so Jupyter and `nbconvert` can
-find the same environment you installed above:
+```bash
+INSTALL_CCFLOWR=true micromamba run -n contextnet Rscript inst/bootstrap.R
+```
+
+If `ccflowR` is unavailable, do not use a lab-private token as part of the public installation path. Install ContextNet core, run Tutorial 01, and skip Sankey/river plots until `ccflowR` is public.
+
+## Register the Jupyter Kernel
+
+Register a clearly named R kernel so users do not see a generic `ir` entry and wonder which environment is active:
 
 ```bash
 micromamba run -n contextnet R -e "IRkernel::installspec(name = 'contextnet_r', displayname = 'ContextNet R')"
 ```
 
-If you run the notebooks under a different kernel name, either select it in
-Jupyter or override it on the command line:
+The notebooks are committed with this kernelspec:
+
+```text
+name: contextnet_r
+display_name: ContextNet R
+language: R
+```
+
+If Jupyter still shows an old raw `ir` kernel for the same environment, remove it after confirming `ContextNet R` works:
 
 ```bash
-jupyter nbconvert --to notebook --execute \
+micromamba run -n contextnet jupyter kernelspec list
+micromamba run -n contextnet jupyter kernelspec remove ir -f
+```
+
+Run a notebook from the command line with:
+
+```bash
+micromamba run -n contextnet jupyter nbconvert --to notebook --execute \
     --ExecutePreprocessor.kernel_name=contextnet_r \
     notebooks/01-getting-started.ipynb
 ```
 
-The tutorials read data from a local `data/` directory and do not download
-anything while running; see [notebooks/README.md](../notebooks/README.md) for the
-exact data requirements and an example-data strategy.
-`fdrtool` used to be required as an extra CRAN install; it is now pulled in transitively by other dependencies and you no longer need to install it explicitly.
+## RStudio and R Markdown
+
+RStudio users can open the companion `.Rmd` files in `notebooks/`. Start RStudio from the activated environment or configure RStudio to use the micromamba R binary:
+
+```bash
+micromamba activate contextnet
+which R
+```
+
+Then run chunks interactively. The `.Rmd` files are tutorial companions, not package-build vignettes, because Tutorials 02 and 03 depend on full local analysis data that is too large to ship with the R package.
 
 ## Verify the Installation
 
+First verify the package ecosystem:
+
 ```bash
-micromamba run -n contextnet R -e "
-  library(ContextNet)
-  check_ecosystem(verbose = TRUE)
-"
+micromamba run -n contextnet R -e "library(ContextNet); check_ecosystem(verbose = TRUE)"
 ```
 
-This reports whether nichenetr, multinichenetr, Seurat, and ccflowR are available in the same R environment.
+Then run Tutorial 01. It uses the packaged synthetic smoke-test fixture under `inst/extdata/contextnet_smoke/` and should not require any lab-private Seurat, AnnData, or NicheNet files. A successful run should produce:
 
-## Day-to-Day Usage
+- a `ContextGRN` with 4 regulatory edges,
+- a `ContextNetwork` with a small ligand-target matrix,
+- a `ContextResult` where `TGFB1` ranks above `FGF2`,
+- static ligand activity and ligand-target support plots,
+- a Sankey/river plot only if `ccflowR` is installed.
 
-### Run R interactively
+## Manual Install Steps
+
+Use these commands if you need to debug the bootstrap one step at a time.
 
 ```bash
+# Activate the environment
 micromamba activate contextnet
-R
-```
 
-### Run tests
+# Required installers
+R -e "install.packages('remotes', repos = 'https://cloud.r-project.org')"
+R -e "install.packages('BiocManager', repos = 'https://cloud.r-project.org')"
 
-```bash
-# All tests
-micromamba run -n contextnet R -e "devtools::test('.')"
+# Bioconductor packages needed by MultiNicheNet
+R -e "BiocManager::install(c('muscat', 'scater', 'sva', 'scran'), ask = FALSE, update = FALSE)"
 
-# Specific test file (e.g., NicheNet tests)
-micromamba run -n contextnet R -e "devtools::test('.', filter = 'nichenet')"
+# Required GitHub packages
+R -e "remotes::install_github('saeyslab/nichenetr', upgrade = 'never')"
+R -e "remotes::install_github('saeyslab/multinichenetr', upgrade = 'never')"
 
-# Summary only (suppresses verbose output)
-micromamba run -n contextnet R -e "devtools::test('.')" 2>&1 | tail -5
-```
+# Optional performance helper for faster Seurat Wilcoxon tests
+R -e "remotes::install_github('immunogenomics/presto', upgrade = 'never')"
 
-### Reinstall after code changes
-
-```bash
-# Fast reinstall (no dependency check)
-micromamba run -n contextnet R CMD INSTALL --no-multiarch --with-keep.source .
-
-# Full reinstall with dependency resolution
-micromamba run -n contextnet R -e "remotes::install_local('.', dependencies = TRUE, upgrade = 'never')"
-```
-
-### Run package check
-
-```bash
-micromamba run -n contextnet R -e "devtools::check('.')"
-```
-
-### Launch Jupyter for tutorials
-
-```bash
-micromamba activate contextnet
-jupyter notebook
-# Open notebooks from the notebooks/ directory
-```
-
-## Managing the Environment
-
-### List installed packages
-
-```bash
-micromamba list -n contextnet
-```
-
-### Search for a package
-
-```bash
-micromamba search -c conda-forge r-ggplot2
-micromamba search -c bioconda bioconductor-limma
-```
-
-Package naming conventions:
-- **CRAN packages:** `r-packagename` (lowercase), e.g., `r-dplyr`, `r-ggplot2`
-- **Bioconductor packages:** `bioconductor-packagename`, e.g., `bioconductor-limma`
-- **System libraries:** plain name, e.g., `nlopt`, `cairo`
-
-### Install additional conda packages
-
-```bash
-micromamba install -n contextnet -c conda-forge r-somepackage -y
-micromamba install -n contextnet -c bioconda bioconductor-somepackage -y
-```
-
-### Update packages
-
-```bash
-# Update a specific package
-micromamba update -n contextnet -c conda-forge r-dplyr -y
-
-# Update all packages (use with caution)
-micromamba update -n contextnet --all -y
-```
-
-### Export the current environment
-
-To capture exact versions for reproducibility:
-
-```bash
-micromamba list -n contextnet --export > environment-lock.txt
-```
-
-### Remove the environment
-
-```bash
-micromamba env remove -n contextnet -y
-```
-
-### Recreate from scratch
-
-```bash
-micromamba env remove -n contextnet -y
-micromamba create -n contextnet -f environment.yml -y
-# Then re-run the "Install Additional Dependencies" steps above
+# ContextNet from the local checkout
+R -e "remotes::install_local('.', dependencies = NA, upgrade = 'never')"
 ```
 
 ## Common Issues
 
 | Problem | Solution |
 |---------|----------|
-| `BiocManager` not found when running step 2 manually | Already in `environment.yml` as `r-biocmanager`. Recreate the env or run `micromamba install -n contextnet -c conda-forge r-biocmanager -y`. |
-| `hdf5r` configure error: "hdf5 does not seem to be installed" | Already in `environment.yml` as `r-hdf5r` (conda-prebuilt with bundled HDF5). Recreate the env or run `micromamba install -n contextnet -c conda-forge r-hdf5r -y`. |
-| `remotes::install_github('settylab/ccflowR')` returns 404 | The repo is private. Export `GITHUB_PAT` (classic PAT with `repo` scope, or `$(gh auth token)`) and re-run the bootstrap. ContextNet core analysis can run without ccflowR, but Tutorials 02/03 require it to render the committed Sankey river plots. |
-| `failed to lock directory` after a killed install | Stale `00LOCK-<pkg>` directories. Re-run `Rscript inst/bootstrap.R` — the bootstrap clears them. To clear manually: `rm -rf $CONDA_PREFIX/lib/R/library/00LOCK-*`. |
-| `nloptr` fails to compile | Already in `environment.yml` as `nlopt + r-nloptr`. If your env predates that, run `micromamba install -n contextnet -c conda-forge nlopt r-nloptr r-lme4 -y`. |
-| `repo.anaconda.com` unreachable | Use only `conda-forge` and `bioconda` channels; pass `--override-channels`. The shipped `environment.yml` already does this. |
-| "Operation not permitted" on macOS source build | macOS extended attributes on the working tree: `xattr -cr /path/to/ContextNet`. |
-| ContextNet R kernel not available in Jupyter | `micromamba run -n contextnet R -e "IRkernel::installspec(name = 'contextnet_r', displayname = 'ContextNet R')"`. |
-| Package version conflicts | Pin the problematic package in `environment.yml` or install it last via R. |
+| `BiocManager` not found | Recreate the env from `environment.yml` or run `micromamba install -n contextnet -c conda-forge r-biocmanager -y`. |
+| `hdf5r` configure error: "hdf5 does not seem to be installed" | Use the micromamba env, which includes `r-hdf5r`; outside the env, install HDF5 development libraries first. |
+| `nloptr` fails to compile | Use the micromamba env, which includes `nlopt` and `r-nloptr`; outside the env, install system `nlopt` first. |
+| `ccflowR` cannot be installed | ContextNet core still works. Install `ccflowR` from the public GitHub repo once available, then rerun only the Sankey/river plot cells. |
+| `failed to lock directory` after an interrupted install | Re-run `Rscript inst/bootstrap.R`, or manually remove `00LOCK-*` directories from the first `.libPaths()` entry. |
+| `repo.anaconda.com` unreachable | Use `--override-channels`; this repo's `environment.yml` only requires conda-forge and bioconda. |
+| Jupyter uses the wrong R | Register and select `ContextNet R`; remove the confusing `ir` kernelspec if it points to the same environment. |
+| RStudio uses a different R | Start RStudio from the activated environment or configure RStudio to use `micromamba run -n contextnet which R`. |
 
 ## Quick Reference
 
 ```bash
-# Create environment
 micromamba create -n contextnet -f environment.yml -y
-
-# Bootstrap GitHub-only deps and ContextNet (idempotent)
-export GITHUB_PAT=$(gh auth token)   # required for private ccflowR
 micromamba run -n contextnet Rscript inst/bootstrap.R
-
-# Activate
-micromamba activate contextnet
-
-# Run R
-micromamba run -n contextnet R
-
-# Run tests
-micromamba run -n contextnet R -e "devtools::test('.')"
-
-# Verify
+micromamba run -n contextnet R -e "IRkernel::installspec(name = 'contextnet_r', displayname = 'ContextNet R')"
 micromamba run -n contextnet R -e "library(ContextNet); check_ecosystem(verbose = TRUE)"
-
-# Remove environment
-micromamba env remove -n contextnet -y
+micromamba run -n contextnet jupyter nbconvert --to notebook --execute --ExecutePreprocessor.kernel_name=contextnet_r notebooks/01-getting-started.ipynb
 ```

@@ -1,1 +1,15 @@
-This directory contains example data files for ContextNet.
+This directory contains small public example data files for ContextNet.
+
+`contextnet_smoke/` is a synthetic smoke-test fixture used by Tutorial 01. It contains:
+
+- `gene_x_tf.csv`: a tiny context-specific gene regulatory network (GRN) stored as a target-gene x transcription-factor matrix.
+- `seurat_obj.rds`: a tiny Seurat object with two sender cell populations, one receiver population, and one reference population. The expected positive control is TGFB1 over FGF2 for the SERPINE1/CDKN1A receiver program.
+- `lr_network_human_21122021.rds` and `weighted_networks_nsga2r_final.rds`: minimal NicheNet-compatible prior files.
+
+The fixture is for installation and object-model testing only. It is not a biological reference dataset and should not be interpreted as evidence for a real signaling mechanism.
+
+Regenerate it with:
+
+```r
+source("inst/scripts/create_smoke_data.R")
+```

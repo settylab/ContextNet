@@ -2,7 +2,7 @@
 
 **scMultiomics-Enhanced Cell-Cell Communication Inference**
 
-ContextNet extends [NicheNet](https://github.com/saeyslab/nichenetr) by replacing its generic gene regulatory network with a **context-specific GRN** inferred from single-cell multiomics data (scRNA-seq + scATAC-seq). This grounds ligand-target predictions in experimentally observed regulatory relationships specific to your biological system.
+ContextNet extends [NicheNet](https://github.com/saeyslab/nichenetr) by replacing its generic gene regulatory network with a **context-specific gene regulatory network (GRN)** inferred from single-cell multiomics data (scRNA-seq + scATAC-seq). This grounds ligand-target predictions in experimentally observed regulatory relationships specific to your biological system.
 
 ## Overview
 
@@ -12,38 +12,51 @@ The framework has three components:
 
 | Component | Description |
 |-----------|-------------|
-| **GRN inference workflow** | Snakemake pipeline for constructing context-specific TF-target relationships from matched scRNA-seq + scATAC-seq |
+| **GRN inference workflow** | Snakemake pipeline for constructing context-specific transcription-factor to target-gene relationships from matched scRNA-seq + scATAC-seq. Public pipeline link: <https://github.com/settylab/contextnet-pipeline> |
 | **ContextNet** (this package) | R package for GRN integration with NicheNet and ligand activity prediction |
-| **[ccflowR](https://github.com/settylab/ccflowR)** | R package for Sankey flow visualization of cell-cell communication |
+| **[ccflowR](https://github.com/settylab/ccflowR)** | Optional R package for Sankey/river visualization of sender-ligand-receptor-receiver communication paths |
 
 ## Installation
 
-The recommended path is the bundled micromamba environment, which produces a reproducible install of R, every Bioconductor and CRAN dep, and the GitHub-only peers (`nichenetr`, `multinichenetr`, `ccflowR`):
+The recommended path is the bundled micromamba environment. It installs R, compiled system libraries, CRAN packages, Bioconductor packages, Jupyter, and IRkernel from conda-forge/bioconda where possible, then uses `inst/bootstrap.R` for GitHub-only R packages.
 
 ```bash
-# 1. Create the conda environment (R + system libs + most CRAN/Bioconductor deps)
+# 1. Create the conda environment
 micromamba create -n contextnet -f environment.yml -y
 
-# 2. Bootstrap the GitHub-only deps and ContextNet itself (idempotent)
-#    ccflowR is in a private repository; export a PAT with `repo` scope.
-export GITHUB_PAT=$(gh auth token)         # or paste a classic PAT
+# 2. Install GitHub-only dependencies and ContextNet itself
 micromamba run -n contextnet Rscript inst/bootstrap.R
+
+# 3. Register the notebook kernel with an intuitive name
+micromamba run -n contextnet R -e "IRkernel::installspec(name = 'contextnet_r', displayname = 'ContextNet R')"
 ```
 
-The bootstrap script installs the GitHub peers at audited pins, including `settylab/ccflowR` at commit `6056c0fe1d1cecfc68aa059bacfbe6bd16725231`. The package can be installed without `ccflowR`, but the committed tutorial river plots require it; set `GITHUB_PAT` before bootstrapping when you want to run Tutorials 02/03 exactly as shown. See the [Micromamba Installation Guide](vignettes/installation-micromamba.md) for the full reference, manual install steps, and troubleshooting.
+The bootstrap installs required GitHub packages such as `nichenetr` and `multinichenetr`, then installs ContextNet from the local checkout. It does **not** require private GitHub access. This is important for publication use: a reader outside the lab should be able to install the core package without a settylab token.
 
-### Lightweight install (CRAN-only path)
+`ccflowR` is optional visualization support for Sankey/river plots. It turns ContextNet or MultiNicheNet result tables into path-level diagrams that connect sender cell type, ligand, receptor, and receiver cell type. This is useful when ranked ligand tables are too dense and the reader needs to inspect the strongest cell-cell communication routes. Once `ccflowR` is public, install it into the same R environment with:
 
-If you don't need the multinichenetr Bioconductor stack and have a working R toolchain, you can install ContextNet alone with `remotes`. You will still need to install `ccflowR` manually if you want Sankey visualization:
+```bash
+micromamba run -n contextnet R -e "remotes::install_github('settylab/ccflowR', upgrade = 'never')"
+```
+
+or opt in during bootstrap:
+
+```bash
+INSTALL_CCFLOWR=true micromamba run -n contextnet Rscript inst/bootstrap.R
+```
+
+If `ccflowR` is not installed, ContextNet still installs and the core analyses run; only Sankey/river plot cells are unavailable. See the [Micromamba Installation Guide](vignettes/installation-micromamba.md) for manual install steps, kernel registration, and troubleshooting.
+
+### Lightweight install
+
+If you already have a working R toolchain and only need ContextNet core functionality, install with hard dependencies first. Avoid `dependencies = TRUE` unless optional packages such as `ccflowR`, `Seurat`, and the full MultiNicheNet stack are already available.
 
 ```r
-# In an R session with `remotes` and a working compiler toolchain
-remotes::install_github("settylab/ContextNet", dependencies = TRUE)
+# In an R session with remotes installed
+remotes::install_github("settylab/ContextNet", dependencies = NA)
 
-# Required for tutorial Sankey river plots (private repo — set GITHUB_PAT first)
-Sys.setenv(GITHUB_PAT = "<your-token>")
-remotes::install_github("settylab/ccflowR",
-                        ref = "6056c0fe1d1cecfc68aa059bacfbe6bd16725231")
+# Optional Sankey/river-plot support once ccflowR is public
+remotes::install_github("settylab/ccflowR", upgrade = "never")
 ```
 
 ### Verify installation
@@ -53,23 +66,26 @@ library(ContextNet)
 check_ecosystem(verbose = TRUE)
 ```
 
+For a fast functional test, run Tutorial 01. It uses the packaged synthetic smoke-test fixture under `inst/extdata/contextnet_smoke/`, so it does not require lab-private Seurat or AnnData files.
+
 ### Known installation issues
 
 | Symptom | Cause / Fix |
 |---|---|
-| `remotes::install_github('settylab/ccflowR')` returns 404 | Private repository. Set `GITHUB_PAT` (`$(gh auth token)` works if you have `gh` logged in) and retry. ContextNet core analysis works without ccflowR, but Tutorials 02/03 require it to render the Sankey river plots. |
-| `nloptr` fails to compile from source | The micromamba env ships `nlopt` + `r-nloptr` pre-built. If you're outside the env: `micromamba install -n contextnet -c conda-forge nlopt r-nloptr r-lme4 -y`. |
-| `hdf5r` configure: `hdf5 does not seem to be installed` | The micromamba env ships `r-hdf5r` pre-built with bundled HDF5. Recreate the env from `environment.yml`. Outside the env: install your distro's `libhdf5-dev` / `hdf5-devel`, or `brew install hdf5`. |
-| `failed to lock directory` after a killed install | Stale `00LOCK-<pkg>` directories. Re-run `Rscript inst/bootstrap.R` (it clears them automatically) or `rm -rf $CONDA_PREFIX/lib/R/library/00LOCK-*`. |
-| `repo.anaconda.com` unreachable | The shipped `environment.yml` only uses `conda-forge` and `bioconda`. If a global `~/.condarc` adds the default channel, pass `--override-channels` to `micromamba create`. |
-| macOS: "Operation not permitted" on the working tree | Extended attributes blocking the build: `xattr -cr /path/to/ContextNet`. |
+| `ccflowR` is not available | ContextNet core analysis does not require it. Install it from `settylab/ccflowR` once the repository is public; until then, skip Sankey/river plots. |
+| Jupyter shows a raw `ir` kernel name | Register the intended kernel with `IRkernel::installspec(name = 'contextnet_r', displayname = 'ContextNet R')`. If an old `ir` kernelspec points to the same env and causes confusion, remove it with `jupyter kernelspec remove ir -f`. |
+| `nloptr` fails to compile from source | Use the micromamba env, which ships `nlopt` and `r-nloptr` pre-built. Outside the env, install system `nlopt` first. |
+| `hdf5r` configure: `hdf5 does not seem to be installed` | Use the micromamba env, which ships `r-hdf5r` with HDF5. Outside the env, install your platform HDF5 development libraries. |
+| `failed to lock directory` after a killed install | Remove stale `00LOCK-*` directories or re-run `Rscript inst/bootstrap.R`, which clears them. |
+| `repo.anaconda.com` unreachable | The shipped `environment.yml` uses only `conda-forge` and `bioconda`. If global conda config adds defaults, pass `--override-channels`. |
+| macOS: "Operation not permitted" on the working tree | Clear extended attributes with `xattr -cr /path/to/ContextNet`. |
 
 ## Quick Start
 
 ```r
 library(ContextNet)
 
-# 1. Import your context-specific GRN (gene x TF matrix, CSV)
+# 1. Import your context-specific gene regulatory network (GRN)
 grn <- import_grn("gene_x_tf.csv")
 
 # 2. Integrate with NicheNet networks
@@ -95,7 +111,7 @@ ligand_activities(result)
 
 ### Sankey visualization with ccflowR
 
-ContextNet pairs with [ccflowR](https://github.com/settylab/ccflowR) to render cell-cell communication as a Sankey river diagram (sender → ligand → receptor → target → receiver). `prepare_for_ccflowr()` + `combine_sankey_data()` build the Sankey data table from base ContextNet, and `ccflowR::sankey_plot()` renders the river plot used in Tutorials 02 and 03.
+ContextNet pairs with [ccflowR](https://github.com/settylab/ccflowR) to render cell-cell communication as a Sankey river diagram: sender cell type -> ligand -> receptor -> receiver cell type. ccflowR is helpful when a ranked ligand table is too dense and you need to inspect the strongest path-level communication hypotheses. `prepare_for_ccflowr()` and `combine_sankey_data()` build the Sankey data table from base ContextNet, and `ccflowR::sankey_plot()` renders the river plot used in Tutorials 02 and 03.
 
 ```r
 library(ccflowR)
@@ -108,26 +124,30 @@ sankey_data <- combine_sankey_data(sankey_raw, threshold_quantile = 0.95)
 
 # 3. Render
 cell_colors <- c(Myeloid = "#E41A1C", Fibroblast = "#377EB8", Epithelial = "#4DAF4A")
-sankey_flow(sankey_data, cell_colors)
+ccflowR::sankey_plot(sankey_data, colors = cell_colors)
 ```
 
 ## Tutorials
 
 | Tutorial | Description |
 |----------|-------------|
-| [01 - Getting Started](notebooks/01-getting-started.ipynb) | Biological-system framing, core concepts, and quick 4-step workflow |
-| [02 - Standard Workflow](notebooks/02-standard-workflow.ipynb) | Contralateral-only receiver-state workflow with ccflowR Sankey river visualization |
-| [03 - Multi-Condition Workflow](notebooks/03-multicondition-workflow.ipynb) | Differential analysis with MultiNicheNet and biological replicates |
+| [01 - Getting Started](notebooks/01-getting-started.ipynb) ([Rmd](notebooks/01-getting-started.Rmd)) | Public smoke test for installation, input files, output objects, and expected figures |
+| [02 - Standard Workflow](notebooks/02-standard-workflow.ipynb) ([Rmd](notebooks/02-standard-workflow.Rmd)) | Contralateral-only receiver-state workflow with ccflowR Sankey river visualization |
+| [03 - Multi-Condition Workflow](notebooks/03-multicondition-workflow.ipynb) ([Rmd](notebooks/03-multicondition-workflow.Rmd)) | Differential analysis with MultiNicheNet and biological replicates |
 
-Installation is a separate setup step covered above and in the [Micromamba Installation Guide](vignettes/installation-micromamba.md). The notebooks assume the package is already installed, then walk through biological questions using local data. They read a context-specific GRN, a Seurat object, and the NicheNet priors from a local `data/` directory and do not download anything while running. See [notebooks/README.md](notebooks/README.md) for data requirements, kernel setup, expected outputs, and an example-data strategy.
+Installation is a separate setup step covered above and in the [Micromamba Installation Guide](vignettes/installation-micromamba.md). The notebooks assume the package is already installed, then walk through biological questions using local data. Tutorial 01 uses a packaged synthetic fixture. Tutorials 02 and 03 read a context-specific gene regulatory network (GRN), a Seurat object, and the NicheNet priors from local data paths and do not download anything while running. See [notebooks/README.md](notebooks/README.md) for data requirements, kernel setup, expected outputs, and the R Markdown companion files.
 
 ## Key Functions
 
-### GRN Import
+### Gene Regulatory Network (GRN) Import
 
 ```r
-grn <- import_grn("gene_x_tf.csv")  # Gene x TF matrix (CSV)
+# Target-gene x transcription-factor matrix from the GRN inference pipeline
+grn_file <- "gene_x_tf.csv"
+grn <- import_grn(grn_file)
 ```
+
+A context-specific gene regulatory network (GRN) is the core input that makes ContextNet different from default NicheNet. It stores transcription-factor to target-gene regulatory weights inferred from the profiled biological context. Use the ContextNet GRN inference pipeline (<https://github.com/settylab/contextnet-pipeline>) or provide an equivalent matrix or edge table from another regulatory-inference workflow.
 
 ### Network Integration
 
@@ -162,7 +182,7 @@ result <- run_multinichenet(
 # Build Sankey data and render with ccflowR for a ContextResult
 sankey_raw  <- prepare_for_ccflowr(result, expression_data = seurat_obj, network = network)
 sankey_data <- combine_sankey_data(sankey_raw, threshold_quantile = 0.95)
-ccflowR::sankey_flow(sankey_data, cell_colors)
+ccflowR::sankey_plot(sankey_data, colors = cell_colors)
 ```
 
 ### Save / Load

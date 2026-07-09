@@ -10,40 +10,23 @@
 # Idempotent: skips packages that are already installed at a compatible
 # version. Re-run safely after upgrading any single dependency.
 #
-# ccflowR (settylab/ccflowR) is a private repo. Export GITHUB_PAT before
-# running to install it; without a PAT it is skipped with a NOTE and the
-# Sankey-visualization paths in the tutorials are unavailable. Easiest
-# way to mint one if you have `gh` logged in:
-#
-#   export GITHUB_PAT=$(gh auth token)
-#   Rscript inst/bootstrap.R
+# ccflowR is optional Sankey/river-plot visualization support. The bootstrap
+# does not require it for a successful ContextNet install. Once ccflowR is
+# publicly accessible, install it by setting INSTALL_CCFLOWR=true before
+# running this script, or install it manually with remotes::install_github().
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
 # Pinned versions for upstream packages whose APIs drift between minor
 # releases. `required = TRUE` means a missing/old version aborts the
-# bootstrap; `required = FALSE` (e.g. ccflowR) just warns and continues
-# so the install can succeed for users without access to the optional
-# repo. Mirror these in DESCRIPTION's Suggests field.
-#
-# ccflowR is pinned by commit SHA, not version, because the package does
-# not yet tag releases. The pin is captured at audit time and re-verified
-# whenever the bootstrap is updated. See the install-audit report under
-# `reports/` for the latest pin + reason.
+# bootstrap. Optional visualization packages are handled outside the required
+# install path so external users can install ContextNet even if a visualization
+# package is temporarily unavailable. Mirror required packages in DESCRIPTION.
 PINS <- list(
     nichenetr      = list(repo = "saeyslab/nichenetr",      ref = NULL,
                           min  = "2.2.1", required = TRUE),
     multinichenetr = list(repo = "saeyslab/multinichenetr", ref = NULL,
-                          min  = "2.1.0", required = TRUE),
-    # `settylab/ccflowR` is a private repository. Users without read
-    # access will get a 404 from `remotes::install_github`. The
-    # bootstrap honours the GITHUB_PAT environment variable; without a
-    # PAT, the install fails and ccflowR is skipped (every callsite is
-    # namespace-guarded, so ContextNet itself works without it; only
-    # the Sankey visualization in the tutorials is lost).
-    ccflowR        = list(repo = "settylab/ccflowR",
-                          ref  = "6056c0fe1d1cecfc68aa059bacfbe6bd16725231",
-                          min  = NULL, required = FALSE)
+                          min  = "2.1.0", required = TRUE)
 )
 
 # Bioconductor deps that multinichenetr requires but bioconda either does
@@ -107,22 +90,13 @@ if (length(missing_bioc) > 0) {
 
 # ── Step 3: GitHub-only packages at pinned versions ───────────────────────────
 
-msg("Step 3/4: install GitHub-only packages at pinned versions")
-ccflowR_is_private <- !nzchar(Sys.getenv("GITHUB_PAT", unset = ""))
+msg("Step 3/4: install required GitHub-only packages")
 for (pkg in names(PINS)) {
     pin <- PINS[[pkg]]
     if (has_min_version(pkg, pin$min)) {
         installed <- as.character(utils::packageVersion(pkg))
         msg("  ", pkg, " ", installed, " already satisfies pin (>= ",
             pin$min %||% "any", ")")
-        next
-    }
-    if (pkg == "ccflowR" && ccflowR_is_private) {
-        msg("  NOTE: settylab/ccflowR is a private repository and ",
-            "GITHUB_PAT is not set. Skipping ccflowR install. ",
-            "To install: export GITHUB_PAT=<token-with-repo-scope> ",
-            "and re-run this bootstrap. ContextNet works without ccflowR; ",
-            "only the Sankey visualization in tutorial 02/03 will be unavailable.")
         next
     }
     spec <- if (!is.null(pin$ref)) paste0(pin$repo, "@", substr(pin$ref, 1, 7)) else pin$repo
@@ -143,7 +117,6 @@ for (pkg in names(PINS)) {
 }
 
 # Sanity-check that the post-install versions actually meet the pins.
-# Optional pins (required = FALSE) are allowed to be missing.
 for (pkg in names(PINS)) {
     pin <- PINS[[pkg]]
     if (has_min_version(pkg, pin$min)) next
@@ -154,9 +127,21 @@ for (pkg in names(PINS)) {
             tryCatch(as.character(utils::packageVersion(pkg)),
                      error = function(e) "<not installed>")
         ))
-    } else {
-        msg("  NOTE: optional package ", pkg, " not installed; skipping pin check")
     }
+}
+
+if (tolower(Sys.getenv("INSTALL_CCFLOWR", unset = "false")) %in% c("1", "true", "yes")) {
+    msg("Optional: installing ccflowR from public GitHub repository")
+    install_ok <- tryCatch({
+        remotes::install_github("settylab/ccflowR", upgrade = "never", quiet = FALSE)
+        TRUE
+    }, error = function(e) {
+        msg("  NOTE: ccflowR could not be installed: ", conditionMessage(e))
+        msg("  ContextNet core analysis is installed; only Sankey river plots require ccflowR.")
+        FALSE
+    })
+} else {
+    msg("Optional: skipping ccflowR install. Set INSTALL_CCFLOWR=true once ccflowR is public if you want Sankey river plots.")
 }
 
 # ── Step 4: install ContextNet itself ─────────────────────────────────────────
@@ -164,7 +149,7 @@ for (pkg in names(PINS)) {
 # `inst/bootstrap.R` lives inside the package source tree. When run via
 # `Rscript inst/bootstrap.R` the working directory is the package root.
 msg("Step 4/4: install ContextNet from local source")
-remotes::install_local(".", upgrade = "never", dependencies = TRUE,
+remotes::install_local(".", upgrade = "never", dependencies = NA,
                        quiet = FALSE)
 
 # ── Verify ────────────────────────────────────────────────────────────────────

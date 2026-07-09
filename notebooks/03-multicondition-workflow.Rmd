@@ -1,0 +1,508 @@
+---
+title: "03 Multicondition Workflow"
+output: html_document
+---
+
+<!-- Generated from the companion Jupyter notebook. Open this file in RStudio and run chunks interactively. -->
+
+# Multi-Condition Analysis with MultiNicheNet
+
+## Biological System
+
+This tutorial uses a head-and-neck squamous cell carcinoma (HNSCC) dataset with multiple biological samples from contralateral (`C`) and normal-adjacent (`N`) tissue. The receiver states are basal, parabasal, suprabasal, and dividing epithelial cells. Unlike Tutorial 02, this workflow treats **sample** as the experimental unit and asks whether communication programs remain prioritized after accounting for biological replicates.
+
+## Biological Question
+
+We ask: **which sender-ligand-receptor programs differ reproducibly between contralateral and normal-adjacent tissue across biological samples, for basal, parabasal, suprabasal, and dividing epithelial receiver states?**
+
+Why ask this question? Cell-level analyses can overstate evidence when many cells come from the same patient or sample. MultiNicheNet uses sample-aware pseudobulk logic and includes cell abundance information, so the result should be read as a replicate-aware differential communication hypothesis rather than a ligand-only ranking.
+
+## Learning Objectives
+
+- Verify that each condition has biological replicates and receiver-cell abundance.
+- Build or reuse the ContextNet ligand-target matrix.
+- Run a MultiNicheNet differential communication analysis across four epithelial receiver states.
+- Interpret prioritization scores as composite evidence from expression, differential regulation, ligand activity, receptor support, and abundance.
+- Render a ccflowR Sankey river plot for the top sender-ligand-receptor-receiver programs. ccflowR is optional visualization support for path-level communication hypotheses: it turns prioritized sender -> ligand -> receptor -> receiver rows into river diagrams that make dense MultiNicheNet output easier to inspect.
+
+## When to Use NicheNet vs MultiNicheNet
+
+| Feature | NicheNet | MultiNicheNet |
+|---------|----------|---------------|
+| Function | `predict_ligand_activity_nichenet()` | `run_multinichenet()` |
+| Replicates | Not required | **Required** |
+| Output | Ligand activity scores (AUPR) | Sender-ligand-receptor-receiver prioritization table |
+| DE method | Wilcoxon rank-sum | Pseudobulk (EdgeR) |
+| `sample_col` | Not needed | **Required** |
+| Use case | Single condition or no replicates | Multi-condition with replicates |
+
+## Environment and Data Setup
+
+Install ContextNet before starting this tutorial; installation instructions live in the repository `README.md` and `vignettes/installation-micromamba.md`. The cells below are not installation steps. They only load packages, set relative data paths, and define the replicate-aware biological contrast used in this notebook.
+
+```{r 03_multicondition_workflow_cell_03, message=TRUE, warning=TRUE}
+suppressWarnings(suppressPackageStartupMessages({
+    library(ContextNet)
+    library(Seurat)
+    library(multinichenetr)
+    library(dplyr)
+    library(ggplot2)
+    library(ccflowR)
+}))
+
+theme_set(theme_minimal(base_family = "sans"))
+```
+
+```{r 03_multicondition_workflow_cell_04, message=TRUE, warning=TRUE}
+# USER CONFIGURATION
+# Paths are relative to the ContextNet project root, with reference-analysis
+# files used when they are available on this cluster.
+
+PROJECT_DIR <- normalizePath(getwd(), mustWork = TRUE)
+if (basename(PROJECT_DIR) == "notebooks" &&
+    file.exists(file.path(PROJECT_DIR, "..", "DESCRIPTION"))) {
+    PROJECT_DIR <- normalizePath(file.path(PROJECT_DIR, ".."), mustWork = TRUE)
+}
+if (!file.exists(file.path(PROJECT_DIR, "DESCRIPTION"))) {
+    stop("Run this notebook from the ContextNet repository root or from the notebooks/ directory.")
+}
+setwd(PROJECT_DIR)
+cat("Using project root:", basename(getwd()), "\n")
+
+DATA_PATH <- "data"
+REFERENCE_NAF_GRN <- "/fh/fast/setty_m/user/yhuang2/HNSCC_cell_communication/data/atac_utility_naf_remade/gene_x_tf/gene_x_tf.csv"
+REFERENCE_SEURAT <- "/fh/fast/setty_m/user/yhuang2/HNSCC_cell_communication/data/seurat/20251215_rna_obj.rds"
+REFERENCE_MULTINICHENET <- "/fh/fast/setty_m/user/yhuang2/HNSCC_cell_communication/data/contextnet/naf_multinichenet_20260319.rds"
+REFERENCE_CELLTYPE_COLORS <- "/fh/fast/setty_m/user/yhuang2/HNSCC_cell_communication/data/celltype_colors.rds"
+
+GRN_FILE <- Sys.getenv(
+    "CONTEXTNET_TUTORIAL03_GRN",
+    unset = if (file.exists(REFERENCE_NAF_GRN)) REFERENCE_NAF_GRN else file.path(DATA_PATH, "gene_x_tf.csv")
+)
+SEURAT_FILE <- Sys.getenv(
+    "CONTEXTNET_TUTORIAL_SEURAT",
+    unset = if (file.exists(REFERENCE_SEURAT)) REFERENCE_SEURAT else file.path(DATA_PATH, "seurat_obj.rds")
+)
+NICHENET_DB <- Sys.getenv("CONTEXTNET_NICHENET_DB", unset = DATA_PATH)
+PRECOMPUTED_MULTINICHENET <- Sys.getenv(
+    "CONTEXTNET_TUTORIAL03_RESULT",
+    unset = REFERENCE_MULTINICHENET
+)
+CELLTYPE_COLORS_FILE <- Sys.getenv(
+    "CONTEXTNET_CELLTYPE_COLORS",
+    unset = REFERENCE_CELLTYPE_COLORS
+)
+USE_PRECOMPUTED_MULTINICHENET <- tolower(Sys.getenv(
+    "CONTEXTNET_USE_PRECOMPUTED_MULTINICHENET",
+    unset = "true"
+)) %in% c("true", "1", "yes")
+
+# Repo-local derived outputs. The cache name is specific to the C/N NAF GRN.
+CACHE_DIR <- file.path(DATA_PATH, "cache")
+NETWORK_CACHE <- file.path(CACHE_DIR, "contextnet_network_naf.rds")
+OUTPUT_DIR <- file.path(CACHE_DIR, "tutorial-03-outputs")
+
+# Analysis parameters: replicate-aware multi-condition comparison.
+RECEIVERS <- c("basal", "parabasal", "suprabasal", "dividing")
+GROUP_COL <- "Fine_Cell_Types"
+IDENT_COL <- "category"
+IDENT_1 <- "C"
+IDENT_2 <- "N"
+SAMPLE_COL <- "sample"
+MIN_CELLS <- 10
+LOGFC_THRESHOLD <- 0.25
+FRACTION_CUTOFF <- 0.05
+TOP_N_TARGET <- 250
+N_CORES <- as.integer(Sys.getenv("CONTEXTNET_MN_N_CORES", unset = "1"))
+
+stopifnot(file.exists(GRN_FILE), file.exists(SEURAT_FILE), dir.exists(NICHENET_DB))
+stopifnot(requireNamespace("ccflowR", quietly = TRUE))
+cat("GRN file:", GRN_FILE, "\n")
+cat("Seurat file:", SEURAT_FILE, "\n")
+cat("NicheNet DB:", NICHENET_DB, "\n")
+cat("Use precomputed MultiNicheNet result:", USE_PRECOMPUTED_MULTINICHENET, "\n")
+```
+
+## Step 1: Load and Explore Data
+
+MultiNicheNet requires biological replicates. Verify that each condition has multiple samples.
+
+```{r 03_multicondition_workflow_cell_06, message=TRUE, warning=TRUE}
+seurat_obj <- readRDS(SEURAT_FILE)
+cat("Loaded Seurat object\n")
+cat("  Cells:", ncol(seurat_obj), "\n")
+cat("  Genes:", nrow(seurat_obj), "\n")
+cat("  Metadata columns:", ncol(seurat_obj[[]]), "\n")
+```
+
+```{r 03_multicondition_workflow_cell_07, message=TRUE, warning=TRUE}
+# Verify replicates: each condition must have multiple samples
+table(seurat_obj$category, seurat_obj[[SAMPLE_COL]][, 1])
+```
+
+### Replicate Design Check
+
+MultiNicheNet treats samples, not cells, as the experimental units. The table above should show multiple samples per condition; otherwise the workflow cannot support replicate-aware differential communication claims.
+
+```{r 03_multicondition_workflow_cell_09, message=TRUE, warning=TRUE}
+# Subset to conditions of interest.
+seurat_cn <- subset(seurat_obj, subset = category %in% c(IDENT_1, IDENT_2))
+seurat_cn[[SAMPLE_COL]] <- droplevels(as.factor(seurat_cn[[SAMPLE_COL]][, 1]))
+seurat_cn[[IDENT_COL]] <- droplevels(as.factor(seurat_cn[[IDENT_COL]][, 1]))
+seurat_cn[[GROUP_COL]] <- droplevels(as.factor(seurat_cn[[GROUP_COL]][, 1]))
+
+cat("Cells:", ncol(seurat_cn), "\n")
+table(seurat_cn[[IDENT_COL]][, 1])
+```
+
+```{r 03_multicondition_workflow_cell_10, message=TRUE, warning=TRUE}
+celltype_counts <- sort(table(seurat_cn[[GROUP_COL]][, 1]), decreasing = TRUE)
+print(celltype_counts)
+```
+
+### Sample-Level Abundance Check
+
+MultiNicheNet uses samples as the replicate unit. A receiver state can have many cells overall but still be weakly supported if it appears in too few samples or is dominated by one condition. Check receiver abundance by condition and sample before interpreting differential communication programs.
+
+```{r 03_multicondition_workflow_cell_12, message=TRUE, warning=TRUE}
+abundance_by_sample <- as.data.frame(table(
+    condition = seurat_cn[[IDENT_COL]][, 1],
+    sample = seurat_cn[[SAMPLE_COL]][, 1],
+    cell_type = seurat_cn[[GROUP_COL]][, 1]
+))
+abundance_by_sample <- abundance_by_sample[abundance_by_sample$Freq > 0, ]
+
+receiver_abundance <- abundance_by_sample %>%
+    filter(cell_type %in% RECEIVERS) %>%
+    group_by(condition, sample, cell_type) %>%
+    summarize(cells = sum(Freq), .groups = "drop")
+
+receiver_abundance_summary <- receiver_abundance %>%
+    group_by(condition, cell_type) %>%
+    summarize(
+        n_samples = dplyr::n_distinct(sample),
+        min_cells = min(cells),
+        median_cells = stats::median(cells),
+        max_cells = max(cells),
+        .groups = "drop"
+    ) %>%
+    arrange(cell_type, condition)
+
+receiver_abundance_summary
+```
+
+```{r 03_multicondition_workflow_cell_13, message=TRUE, warning=TRUE}
+options(repr.plot.width = 8, repr.plot.height = 5)
+
+ggplot(receiver_abundance, aes(x = cell_type, y = cells, color = condition)) +
+    geom_point(position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.5), size = 2, alpha = 0.8) +
+    scale_y_log10() +
+    labs(
+        x = "Receiver epithelial state",
+        y = "Cells per sample (log10 scale)",
+        title = "Receiver-state abundance by sample and condition"
+    )
+```
+
+### Sender and Receiver Universe
+
+The reference analysis tests every observed cell type as a potential sender and focuses receiver interpretation on four epithelial states: basal, parabasal, suprabasal, and dividing. Low-abundance cell types are kept in the candidate universe here; MultiNicheNet applies the `MIN_CELLS` sample-level filter during pseudobulk analysis.
+
+```{r 03_multicondition_workflow_cell_15, message=TRUE, warning=TRUE}
+all_celltypes <- as.character(unique(seurat_cn@meta.data[[GROUP_COL]]))
+
+sender_receiver_pairs <- list()
+for (sender in all_celltypes) {
+    for (receiver in RECEIVERS) {
+        sender_receiver_pairs <- c(sender_receiver_pairs, list(c(sender, receiver)))
+    }
+}
+
+cat("Cell types:", paste(sort(all_celltypes), collapse = ", "), "\n")
+cat("Sender-receiver pairs:", length(sender_receiver_pairs), "\n")
+cat("Receivers:", paste(RECEIVERS, collapse = ", "), "\n")
+cat("Comparison:", IDENT_1, "vs", IDENT_2, "\n")
+```
+
+## Step 2: Use the Matching NAF ContextNet Matrix
+
+The supplied MultiNicheNet analysis was run with the C/N NAF-remade GRN. The saved reference result is loaded by default, so the notebook does not rebuild the large ligand-target matrix unless you explicitly request a rerun by setting `CONTEXTNET_USE_PRECOMPUTED_MULTINICHENET=false`.
+
+This matters biologically: the NAF C/N matrix is not interchangeable with the contralateral-only matrix from Tutorial 02 because the two notebooks ask different questions.
+
+```{r 03_multicondition_workflow_cell_17, message=TRUE, warning=TRUE}
+# The saved reference MultiNicheNet object already comes from a ContextNet LTM
+# built with the NAF-remade GRN. Rebuild the network only when rerunning MN.
+if (USE_PRECOMPUTED_MULTINICHENET && file.exists(PRECOMPUTED_MULTINICHENET)) {
+    network <- NULL
+    ltm <- NULL
+    cat("Precomputed MultiNicheNet result found; skipping NAF network rebuild.\n")
+    cat("Reference ContextNet LTM from supplied notebook: 25311 targets x 1226 ligands\n")
+} else {
+    network_loaded <- FALSE
+    if (file.exists(NETWORK_CACHE)) {
+        network <- readRDS(NETWORK_CACHE)
+        ltm <- ligand_target_matrix(network)
+        network_loaded <- !(file.exists(REFERENCE_NAF_GRN) && length(targets(network)) != 25311)
+        if (network_loaded) {
+            cat("Loaded cached NAF ContextNetwork from:", NETWORK_CACHE, "\n")
+        } else {
+            cat("Cached network does not match the NAF reference dimensions; rebuilding.\n")
+            rm(network, ltm)
+        }
+    }
+
+    if (!network_loaded) {
+        grn <- import_grn(GRN_FILE)
+        if (file.exists(REFERENCE_NAF_GRN) &&
+            normalizePath(GRN_FILE, mustWork = TRUE) == normalizePath(REFERENCE_NAF_GRN, mustWork = TRUE)) {
+            stopifnot(length(targets(grn)) == 12513)
+        } else {
+            warning("Using a non-reference NAF GRN; results may not match the supplied MultiNicheNet notebook.")
+        }
+        network <- integrate_networks(grn, nichenet_database = NICHENET_DB, mode = "replace")
+        if (!dir.exists(CACHE_DIR)) dir.create(CACHE_DIR, recursive = TRUE)
+        saveRDS(network, NETWORK_CACHE)
+        ltm <- ligand_target_matrix(network)
+    }
+
+    cat("ContextNetwork ready\n")
+    cat("  Ligands:", length(ligands(network)), "\n")
+    cat("  Target genes:", length(targets(network)), "\n")
+    cat("  Ligand-target matrix:", nrow(ltm), "targets x", ncol(ltm), "ligands\n")
+}
+```
+
+## Step 3: Run or Load the Reference MultiNicheNet Analysis
+
+The supplied reference notebook produced a separate-cell-types MultiNicheNet run with dividing retained as its own receiver. To keep the tutorial output stable and fast for review, this notebook loads that saved result when it is available. If `CONTEXTNET_USE_PRECOMPUTED_MULTINICHENET=false`, or if the saved object is absent, the same `run_multinichenet()` call is executed from the inputs above.
+
+```{r 03_multicondition_workflow_cell_19, message=TRUE, warning=TRUE}
+if (USE_PRECOMPUTED_MULTINICHENET && file.exists(PRECOMPUTED_MULTINICHENET)) {
+    pkg_mn_ctx <- readRDS(PRECOMPUTED_MULTINICHENET)
+    cat("Loaded precomputed MultiNicheNet result:", PRECOMPUTED_MULTINICHENET, "\n")
+} else {
+    cat("Running MultiNicheNet from the reference inputs. This can take 20-40 minutes.\n")
+    pkg_mn_ctx <- suppressWarnings(run_multinichenet(
+        object = seurat_cn,
+        network = network,
+        sender_receiver_pairs = sender_receiver_pairs,
+        condition_col = IDENT_COL,
+        contrast = c(condition_oi = IDENT_1, condition_ref = IDENT_2),
+        sample_col = SAMPLE_COL,
+        group_col = GROUP_COL,
+        min_cells = MIN_CELLS,
+        logfc_threshold = LOGFC_THRESHOLD,
+        fraction_cutoff = FRACTION_CUTOFF,
+        top_n_target = TOP_N_TARGET,
+        nichenet_database = NICHENET_DB,
+        n_cores = N_CORES,
+        verbose = TRUE
+    ))
+}
+
+ctx_prio <- pkg_mn_ctx$multinichenet_output$prioritization_tables$group_prioritization_tbl
+cat("Prioritization table:", nrow(ctx_prio), "rows\n")
+```
+
+## Step 4: Explore Prioritized Communication Programs
+
+MultiNicheNet returns a prioritization table with composite scores integrating ligand and receptor expression, differential expression, ligand activity, and abundance-aware sender-receiver context. Results span all sender-receiver pairs and both contrast directions (`C` and `N`).
+
+`ctx_prio` is the main interpretation table. Each row is a sender-ligand-receptor-receiver program in one condition group. The `prioritization_score` is a composite score, so a high-ranked row is a hypothesis to inspect, not proof that one molecular mechanism is causal.
+
+```{r 03_multicondition_workflow_cell_22, message=TRUE, warning=TRUE}
+cat("Prioritization rows:", nrow(ctx_prio), "\n")
+cat("Groups:", paste(sort(unique(ctx_prio$group)), collapse = ", "), "\n")
+cat("Senders:", paste(sort(unique(ctx_prio$sender)), collapse = ", "), "\n")
+cat("Receivers:", paste(sort(unique(ctx_prio$receiver)), collapse = ", "), "\n")
+cat("Unique ligands:", dplyr::n_distinct(ctx_prio$ligand), "\n")
+cat("Unique receptors:", dplyr::n_distinct(ctx_prio$receptor), "\n")
+
+ctx_prio %>%
+    arrange(desc(prioritization_score)) %>%
+    select(group, sender, receiver, ligand, receptor, prioritization_score) %>%
+    head(10)
+```
+
+```{r 03_multicondition_workflow_cell_23, message=TRUE, warning=TRUE}
+ligand_summary <- ctx_prio %>%
+    group_by(ligand) %>%
+    summarize(
+        prioritization_score = max(prioritization_score, na.rm = TRUE),
+        n_rows = dplyr::n(),
+        n_senders = dplyr::n_distinct(sender),
+        n_receivers = dplyr::n_distinct(receiver),
+        groups = paste(sort(unique(group)), collapse = ", "),
+        .groups = "drop"
+    ) %>%
+    arrange(desc(prioritization_score))
+
+head(ligand_summary, 15)
+```
+
+### Reading the MultiNicheNet Table
+
+For this workflow, a high-ranked row should be read as a **sample-aware differential communication program**. The score is not only ligand activity; it combines ligand/receptor expression, differential regulation, target activity, and sender-receiver context. Use the table to identify which component supports the path before making a biological claim.
+
+```{r 03_multicondition_workflow_cell_25, message=TRUE, warning=TRUE}
+head(ligand_summary$ligand, 30)
+```
+
+```{r 03_multicondition_workflow_cell_26, message=TRUE, warning=TRUE}
+ctx_prio %>%
+    arrange(desc(prioritization_score)) %>%
+    select(group, sender, receiver, ligand, receptor, prioritization_score,
+           scaled_lfc_ligand, scaled_lfc_receptor, max_scaled_activity) %>%
+    head(20)
+```
+
+```{r 03_multicondition_workflow_cell_27, message=TRUE, warning=TRUE}
+list(
+    condition_col = IDENT_COL,
+    contrast = c(condition_oi = IDENT_1, condition_ref = IDENT_2),
+    sample_col = SAMPLE_COL,
+    group_col = GROUP_COL,
+    receivers = RECEIVERS,
+    sender_receiver_pairs = length(sender_receiver_pairs),
+    min_cells = MIN_CELLS,
+    logfc_threshold = LOGFC_THRESHOLD,
+    fraction_cutoff = FRACTION_CUTOFF,
+    top_n_target = TOP_N_TARGET,
+    n_cores = N_CORES,
+    used_precomputed_result = USE_PRECOMPUTED_MULTINICHENET && file.exists(PRECOMPUTED_MULTINICHENET)
+)
+```
+
+## Step 5: Visualize
+
+```{r 03_multicondition_workflow_cell_29, message=TRUE, warning=TRUE}
+options(repr.plot.width = 7, repr.plot.height = 8)
+
+top_act <- head(ligand_summary, 30)
+top_act$ligand <- factor(top_act$ligand, levels = rev(top_act$ligand))
+
+ggplot(top_act, aes(x = prioritization_score, y = ligand)) +
+    geom_col(fill = "#2C7BB6") +
+    labs(
+        x = "Maximum MultiNicheNet prioritization score",
+        y = NULL,
+        title = "Top 30 Ligands Across Epithelial Receivers (C vs N)"
+    ) +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+**Interpretation**: This plot collapses across sender, receptor, receiver, and condition to show which ligands appear in the strongest prioritized programs. Use it as a screening view only. The row-level table and Sankey plot below are needed to see which sender and receiver support each ligand.
+
+### Sankey River Plot with ccflowR
+
+ccflowR is used here as an interpretability layer over the MultiNicheNet prioritization table. The graph asks: **which sender -> ligand -> receptor -> epithelial receiver routes account for the highest-priority C-vs-N communication programs across samples?**
+
+The supplied reference analysis plots the top rows of `group_prioritization_tbl` directly. We follow that structure here rather than remapping through `prepare_for_ccflowr()`, so the figure reflects the same rows as the reference notebook.
+
+```{r 03_multicondition_workflow_cell_32, message=TRUE, warning=TRUE}
+subset_combined <- ctx_prio %>%
+    filter(sender != "transitioning") %>%
+    arrange(desc(prioritization_score)) %>%
+    slice_head(n = 50) %>%
+    ungroup()
+
+cat(sprintf("Top interactions: %d rows\n", nrow(subset_combined)))
+cat(sprintf("Groups: %s\n", paste(unique(subset_combined$group), collapse = ", ")))
+cat(sprintf("Unique senders:   %s\n", paste(sort(unique(subset_combined$sender)), collapse = ", ")))
+cat(sprintf("Unique receivers: %s\n", paste(sort(unique(subset_combined$receiver)), collapse = ", ")))
+cat(sprintf("Unique ligands:   %d\n", dplyr::n_distinct(subset_combined$ligand)))
+cat(sprintf("Unique receptors: %d\n", dplyr::n_distinct(subset_combined$receptor)))
+print(table(subset_combined$group))
+
+subset_combined %>%
+    select(group, sender, ligand, receptor, receiver, prioritization_score) %>%
+    head(10)
+```
+
+```{r 03_multicondition_workflow_cell_33, message=TRUE, warning=TRUE}
+if (file.exists(CELLTYPE_COLORS_FILE)) {
+    celltype_colors <- readRDS(CELLTYPE_COLORS_FILE)
+} else {
+    cell_types_in_plot <- unique(c(subset_combined$sender, subset_combined$receiver))
+    palette <- grDevices::hcl.colors(length(cell_types_in_plot), palette = "Dark 3")
+    celltype_colors <- stats::setNames(palette, cell_types_in_plot)
+}
+group_colors <- c("C" = "#3A7D44", "N" = "#7B68AE")
+
+suppressMessages(
+    ccflowR::sankey_plot(
+        subset_combined,
+        colors = celltype_colors,
+        group_colors = group_colors,
+        group_col = "group"
+    ) +
+        ccflowR::sankey_colors(by = "condition") +
+        ccflowR::sankey_title("Cell-Cell Communication (ContextNet LTM)") +
+        ccflowR::sankey_font(family = "Arial", size = 12) +
+        ccflowR::sankey_layout(height = 1200, width = 954) +
+        ccflowR::sankey_highlight(
+            receptors = c("EGFR", "GZD6", "NOTCH1", "LRP6", "ROR1", "FZD6", "ITGA9", "ITGB1", "EPHA4", "CD63")
+        )
+)
+```
+
+## Step 6: Save Results
+
+```{r 03_multicondition_workflow_cell_35, message=TRUE, warning=TRUE}
+if (!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
+saveRDS(pkg_mn_ctx, file.path(OUTPUT_DIR, "multinichenet_result.rds"))
+write.csv(ctx_prio, file.path(OUTPUT_DIR, "multinichenet_prioritization_table.csv"), row.names = FALSE)
+write.csv(subset_combined, file.path(OUTPUT_DIR, "multinichenet_top50_sankey_rows.csv"), row.names = FALSE)
+write.csv(receiver_abundance_summary, file.path(OUTPUT_DIR, "receiver_abundance_summary.csv"), row.names = FALSE)
+cat("Saved tutorial outputs to:", OUTPUT_DIR, "\n")
+list.files(OUTPUT_DIR, pattern = "\\.(rds|csv)$")
+```
+
+```{r 03_multicondition_workflow_cell_36, message=TRUE, warning=TRUE}
+session_pkgs <- c("ContextNet", "Seurat", "nichenetr", "multinichenetr", "ggplot2", "ccflowR")
+cat("R version:", R.version.string, "\n")
+for (pkg in session_pkgs) {
+    if (requireNamespace(pkg, quietly = TRUE)) {
+        cat(pkg, "version:", as.character(utils::packageVersion(pkg)), "\n")
+    }
+}
+```
+
+## Key Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `GRN_FILE` | Yes | C/N NAF-remade context GRN used to build the ContextNet ligand-target matrix |
+| `sender_receiver_pairs` | Yes | All observed sender cell types crossed with basal, parabasal, suprabasal, and dividing receivers |
+| `condition_col` / `IDENT_COL` | Yes | Metadata column for condition grouping; this tutorial uses `category` |
+| `contrast` | Yes | `C` as condition of interest and `N` as reference |
+| `sample_col` / `SAMPLE_COL` | **Yes** | Metadata column for sample/replicate IDs |
+| `group_col` / `GROUP_COL` | Yes | Metadata column with cell type labels |
+| `min_cells` / `MIN_CELLS` | Yes | Minimum cells per cell type per sample for pseudobulk support; reference value is 10 |
+| `top_n_target` / `TOP_N_TARGET` | Yes | Number of target genes retained per ligand; reference value is 250 |
+| `PRECOMPUTED_MULTINICHENET` | No | Saved reference run loaded by default so tutorial figures match the supplied analysis |
+
+### MultiNicheNet Prioritization Score
+
+The composite prioritization score integrates criteria such as ligand expression, receptor expression, ligand differential expression, receptor differential expression, ligand activity, and cell abundance. Inspect the underlying table before assigning the biological signal to one mechanism.
+
+| Criterion | Description |
+|-----------|-------------|
+| `scaled_lfc_ligand` | Scaled log fold-change of ligand between conditions |
+| `scaled_p_val_ligand_adapted` | Scaled significance of ligand DE |
+| `scaled_lfc_receptor` | Scaled log fold-change of receptor between conditions |
+| `scaled_p_val_receptor_adapted` | Scaled significance of receptor DE |
+| `max_scaled_activity` | Maximum ligand activity score across target genes |
+| `scaled_pb_ligand` | Scaled pseudobulk expression of ligand |
+| `scaled_pb_receptor` | Scaled pseudobulk expression of receptor |
+| `fraction_expressing_ligand_receptor` | Fraction of cells expressing the L-R pair |
+
+## Using the Context-Specific Matrix with multinichenetr Directly
+
+If you need custom contrasts, paired designs, additional filtering, or direct comparison between the ContextNet matrix and the default NicheNet matrix, extract the ligand-target matrix and pass it to lower-level `multinichenetr` functions.
+
+```r
+ltm <- ligand_target_matrix(network)
+```

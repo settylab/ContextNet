@@ -101,18 +101,14 @@ dependencies:
   #
   #   nichenetr        >= 2.2.1   (saeyslab/nichenetr)
   #   multinichenetr   >= 2.1.0   (saeyslab/multinichenetr)
-  #   ccflowR          (settylab/ccflowR, pinned commit; sankey visualization)
+  # ccflowR is optional Sankey/river-plot visualization support. It is
+  # intentionally not required for the core ContextNet install so external
+  # users can install the package even if the visualization package is not
+  # available in their environment yet. Once ccflowR is public, install it with:
   #
-  # `settylab/ccflowR` is a private repository. Users without read access
-  # will get a 404 from `remotes::install_github`. To install ccflowR you
-  # must have a GitHub PAT with `repo` scope on the settylab org and
-  # export it before running bootstrap:
+  #   micromamba run -n contextnet R -e "remotes::install_github('settylab/ccflowR', upgrade = 'never')"
   #
-  #   export GITHUB_PAT=$(gh auth token)   # or paste a classic PAT
-  #
-  # Without a PAT the bootstrap continues and ccflowR is skipped (it is
-  # an optional Suggests dep — every callsite is namespace-guarded). The
-  # Sankey visualization in the tutorials will be unavailable.
+  # or set INSTALL_CCFLOWR=true before running inst/bootstrap.R.
   #
   # The bootstrap also installs Bioconductor deps that multinichenetr
   # needs but that bioconda does not ship in compatible versions:
