@@ -30,7 +30,7 @@ export GITHUB_PAT=$(gh auth token)         # or paste a classic PAT
 micromamba run -n contextnet Rscript inst/bootstrap.R
 ```
 
-The bootstrap script installs the GitHub peers at audited pins, including `settylab/ccflowR` at commit `6056c0fe1d1cecfc68aa059bacfbe6bd16725231`. Without `GITHUB_PAT` it skips `ccflowR` (the Sankey visualization in tutorials 02/03 will be unavailable) and continues. See the [Micromamba Installation Guide](vignettes/installation-micromamba.md) for the full reference, manual install steps, and troubleshooting.
+The bootstrap script installs the GitHub peers at audited pins, including `settylab/ccflowR` at commit `6056c0fe1d1cecfc68aa059bacfbe6bd16725231`. The package can be installed without `ccflowR`, but the committed tutorial river plots require it; set `GITHUB_PAT` before bootstrapping when you want to run Tutorials 02/03 exactly as shown. See the [Micromamba Installation Guide](vignettes/installation-micromamba.md) for the full reference, manual install steps, and troubleshooting.
 
 ### Lightweight install (CRAN-only path)
 
@@ -40,7 +40,7 @@ If you don't need the multinichenetr Bioconductor stack and have a working R too
 # In an R session with `remotes` and a working compiler toolchain
 remotes::install_github("settylab/ContextNet", dependencies = TRUE)
 
-# Optional: ccflowR for Sankey visualization (private repo — set GITHUB_PAT first)
+# Required for tutorial Sankey river plots (private repo — set GITHUB_PAT first)
 Sys.setenv(GITHUB_PAT = "<your-token>")
 remotes::install_github("settylab/ccflowR",
                         ref = "6056c0fe1d1cecfc68aa059bacfbe6bd16725231")
@@ -57,7 +57,7 @@ check_ecosystem(verbose = TRUE)
 
 | Symptom | Cause / Fix |
 |---|---|
-| `remotes::install_github('settylab/ccflowR')` returns 404 | Private repository. Set `GITHUB_PAT` (`$(gh auth token)` works if you have `gh` logged in) and retry. ContextNet works without ccflowR; you only lose the tutorial Sankey visualization. |
+| `remotes::install_github('settylab/ccflowR')` returns 404 | Private repository. Set `GITHUB_PAT` (`$(gh auth token)` works if you have `gh` logged in) and retry. ContextNet core analysis works without ccflowR, but Tutorials 02/03 require it to render the Sankey river plots. |
 | `nloptr` fails to compile from source | The micromamba env ships `nlopt` + `r-nloptr` pre-built. If you're outside the env: `micromamba install -n contextnet -c conda-forge nlopt r-nloptr r-lme4 -y`. |
 | `hdf5r` configure: `hdf5 does not seem to be installed` | The micromamba env ships `r-hdf5r` pre-built with bundled HDF5. Recreate the env from `environment.yml`. Outside the env: install your distro's `libhdf5-dev` / `hdf5-devel`, or `brew install hdf5`. |
 | `failed to lock directory` after a killed install | Stale `00LOCK-<pkg>` directories. Re-run `Rscript inst/bootstrap.R` (it clears them automatically) or `rm -rf $CONDA_PREFIX/lib/R/library/00LOCK-*`. |
@@ -95,7 +95,7 @@ ligand_activities(result)
 
 ### Sankey visualization with ccflowR
 
-ContextNet pairs with [ccflowR](https://github.com/settylab/ccflowR) to render cell-cell communication as a Sankey diagram (sender → ligand → receptor → target → receiver). ccflowR is an **optional** dependency: `prepare_for_ccflowr()` + `combine_sankey_data()` build the Sankey data table from base ContextNet, and only `sankey_flow()` requires ccflowR. The tutorials run end to end without it.
+ContextNet pairs with [ccflowR](https://github.com/settylab/ccflowR) to render cell-cell communication as a Sankey river diagram (sender → ligand → receptor → target → receiver). `prepare_for_ccflowr()` + `combine_sankey_data()` build the Sankey data table from base ContextNet, and `ccflowR::sankey_plot()` renders the river plot used in Tutorials 02 and 03.
 
 ```r
 library(ccflowR)
@@ -115,11 +115,11 @@ sankey_flow(sankey_data, cell_colors)
 
 | Tutorial | Description |
 |----------|-------------|
-| [01 - Getting Started](notebooks/01-getting-started.ipynb) | Concepts, installation, and quick 4-step workflow |
-| [02 - Standard Workflow](notebooks/02-standard-workflow.ipynb) | Full NicheNet workflow with Sankey visualization |
+| [01 - Getting Started](notebooks/01-getting-started.ipynb) | Biological-system framing, core concepts, and quick 4-step workflow |
+| [02 - Standard Workflow](notebooks/02-standard-workflow.ipynb) | Contralateral-only receiver-state workflow with ccflowR Sankey river visualization |
 | [03 - Multi-Condition Workflow](notebooks/03-multicondition-workflow.ipynb) | Differential analysis with MultiNicheNet and biological replicates |
 
-These are full local-data tutorials: they read a context-specific GRN, a Seurat object, and the NicheNet priors from a local `data/` directory and do not download anything while running. See [notebooks/README.md](notebooks/README.md) for data requirements, kernel setup, and an example-data strategy.
+Installation is a separate setup step covered above and in the [Micromamba Installation Guide](vignettes/installation-micromamba.md). The notebooks assume the package is already installed, then walk through biological questions using local data. They read a context-specific GRN, a Seurat object, and the NicheNet priors from a local `data/` directory and do not download anything while running. See [notebooks/README.md](notebooks/README.md) for data requirements, kernel setup, expected outputs, and an example-data strategy.
 
 ## Key Functions
 
@@ -147,9 +147,11 @@ result <- predict_ligand_activity_nichenet(
 )
 
 # MultiNicheNet (multi-condition with replicates)
-result <- predict_ligand_activity_multinichenet(
-    object, network, sender, receiver,
-    ident_col = "condition", ident_1 = "Disease", ident_2 = "Control",
+result <- run_multinichenet(
+    object, network,
+    sender_receiver_pairs = sender_receiver_pairs,
+    condition_col = "condition",
+    contrast = c(condition_oi = "Disease", condition_ref = "Control"),
     sample_col = "sample"  # Required
 )
 ```
@@ -157,7 +159,7 @@ result <- predict_ligand_activity_multinichenet(
 ### Visualization
 
 ```r
-# Build Sankey data and render with ccflowR
+# Build Sankey data and render with ccflowR for a ContextResult
 sankey_raw  <- prepare_for_ccflowr(result, expression_data = seurat_obj, network = network)
 sankey_data <- combine_sankey_data(sankey_raw, threshold_quantile = 0.95)
 ccflowR::sankey_flow(sankey_data, cell_colors)

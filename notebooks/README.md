@@ -7,24 +7,26 @@ The tutorials are organized around biological questions rather than package func
 | Tutorial | Biological question | Statistical mode | Main output | Use when |
 |----------|---------------------|------------------|-------------|----------|
 | [01 Getting Started](01-getting-started.ipynb) | Which ligands are consistent with a basal epithelial identity program? | Cell type comparison | `ContextResult` with ligand activity and ligand-target links | You are learning the object model and minimal workflow |
-| [02 Standard Workflow](02-standard-workflow.ipynb) | Which sender ligands may explain basal-cell changes between C and N tissue? | Within-receiver condition comparison | ligand activity, target heatmaps, ccflowR Sankey paths | You have a single contrast and want full interpretation/visualization |
+| [02 Standard Workflow](02-standard-workflow.ipynb) | Which sender ligands may explain basal, parabasal, suprabasal, and dividing receiver states within contralateral tissue? | Contralateral-only epithelial state comparison | receiver-specific ligand activity, target heatmaps, ccflowR Sankey river paths | You want a single-tissue ContextNet analysis across epithelial receiver states |
 | [03 Multi-Condition Workflow](03-multicondition-workflow.ipynb) | Which communication programs change reproducibly across samples? | Replicate-aware MultiNicheNet pseudobulk | prioritization table and ccflowR Sankey paths | You have biological replicates and need sample-aware inference |
 
 ## Running the Notebooks
 
-- **Kernel.** The notebooks use the standard IRkernel, registered under the name `ir`. Install it once from R with `IRkernel::installspec()` (see the [micromamba installation guide](../vignettes/installation-micromamba.md)). If your kernel has a different name, either select it in Jupyter or override it on the command line:
+- **Installation.** Install ContextNet first using the repository `README.md` or the micromamba guide. The notebooks do not install packages; they start from biological questions and use setup cells only to load libraries and local data.
+
+- **Kernel.** The notebooks use an R kernel named `contextnet_r`, displayed in Jupyter as **ContextNet R**. Install it once from R with `IRkernel::installspec(name = "contextnet_r", displayname = "ContextNet R")` (see the [micromamba installation guide](../vignettes/installation-micromamba.md)). If your kernel has a different name, either select it in Jupyter or override it on the command line:
 
   ```bash
   jupyter nbconvert --to notebook --execute \
-      --ExecutePreprocessor.kernel_name=ir \
+      --ExecutePreprocessor.kernel_name=contextnet_r \
       notebooks/01-getting-started.ipynb
   ```
 
 - **Working directory.** Run a notebook from the repository root or from the `notebooks/` directory. The first setup cell normalizes the working directory to the repository root, so all data paths are relative and portable.
 
-- **Optional visualization.** [ccflowR](https://github.com/settylab/ccflowR) is optional. Every notebook builds the Sankey *data table* with `prepare_for_ccflowr()` + `combine_sankey_data()` and prints it, then only renders the diagram when ccflowR is installed (`requireNamespace("ccflowR")`). The tutorials run end to end without it.
+- **ccflowR river plots.** [ccflowR](https://github.com/settylab/ccflowR) is required for the committed Sankey river plots in Tutorials 02 and 03. Install it into the same **ContextNet R** kernel environment before running the notebooks; the micromamba guide shows the private-repo install step.
 
-- **Outputs are not committed.** Notebooks are stored without executed outputs, so the repository never carries stale results or private absolute paths. Run a notebook locally to regenerate plots and tables.
+- **Outputs and figures.** The notebooks are committed with current executed outputs from the local HNSCC example data so readers can see the expected tables and figures. Re-run a notebook locally when inputs, package versions, or plotting code change.
 
 ## Data Requirements and Example-Data Strategy
 
@@ -85,13 +87,15 @@ The extracted values are ordinary R objects and are the recommended inputs for c
 
 ## ccflowR in the Tutorials
 
-ccflowR is used after ligand prioritization to visualize path-level hypotheses:
+ccflowR is used after ligand prioritization to visualize path-level hypotheses. Tutorial 02 maps receiver-specific `ContextResult` objects into Sankey rows:
 
 ```r
 sankey_raw <- prepare_for_ccflowr(result, expression_data = seurat_obj, network = network)
 sankey_data <- combine_sankey_data(sankey_raw, threshold_quantile = 0.95)
 ccflowR::sankey_flow(sankey_data, cell_colors)
 ```
+
+Tutorial 03 follows the supplied MultiNicheNet reference analysis and plots the top rows of `group_prioritization_tbl` directly with `ccflowR::sankey_plot()`.
 
 Read a ccflowR path as a prioritized model-supported route from sender to receiver. It is not direct proof of secretion, receptor binding, or spatial contact. The strongest interpretation comes when the same path is supported by ligand expression, receptor expression, target-gene changes, regulatory potential, and external biological evidence.
 

@@ -1,6 +1,6 @@
 # Installation with Micromamba
 
-This guide covers how to install and manage the ContextNet development environment using [micromamba](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html), a fast, lightweight package manager compatible with conda environments.
+This guide covers how to install and manage the ContextNet development environment using [micromamba](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html), a fast, lightweight package manager compatible with conda environments. It is intentionally limited to installation and environment management; the biological questions and example analyses start in the tutorial notebooks after this setup is complete.
 
 ## Why Micromamba?
 
@@ -97,10 +97,9 @@ micromamba run -n contextnet R -e "<command>"
 From the ContextNet project root:
 
 ```bash
-# Optional: ccflowR (Sankey visualization) is in a private repository.
-# Export a GitHub PAT with `repo` scope to install it. Without a PAT,
-# the bootstrap skips ccflowR and continues — ContextNet itself works,
-# only the Sankey visualization in tutorials 02/03 will be unavailable.
+# ccflowR (Sankey river visualization) is in a private repository.
+# Export a GitHub PAT with `repo` scope before bootstrapping if you
+# want Tutorials 02/03 to render exactly as committed.
 export GITHUB_PAT=$(gh auth token)   # or paste a classic PAT
 
 micromamba run -n contextnet Rscript inst/bootstrap.R
@@ -113,7 +112,7 @@ The bootstrap script:
 3. Installs the GitHub-only packages at pinned versions:
    - `saeyslab/nichenetr` (>= 2.2.1)
    - `saeyslab/multinichenetr` (>= 2.1.0)
-   - `settylab/ccflowR` at the audited commit SHA (skipped if `GITHUB_PAT` is unset)
+   - `settylab/ccflowR` at the audited commit SHA (requires `GITHUB_PAT`; needed for tutorial river plots)
 4. Installs `ContextNet` itself from the local source.
 5. Runs `check_ecosystem()` to verify every component loads.
 
@@ -147,13 +146,14 @@ micromamba run -n contextnet R -e "
 "
 ```
 
-### Register the Jupyter R kernel (for the tutorials)
+### Register the ContextNet R kernel (for the tutorials)
 
-The tutorial notebooks reference the standard IRkernel under the name `ir`.
-Register it once so Jupyter (and `nbconvert`) can find it:
+The tutorial notebooks use an R kernel named `contextnet_r`, displayed in
+Jupyter as **ContextNet R**. Register it once so Jupyter and `nbconvert` can
+find the same environment you installed above:
 
 ```bash
-micromamba run -n contextnet R -e "IRkernel::installspec(name = 'ir', displayname = 'R')"
+micromamba run -n contextnet R -e "IRkernel::installspec(name = 'contextnet_r', displayname = 'ContextNet R')"
 ```
 
 If you run the notebooks under a different kernel name, either select it in
@@ -161,7 +161,7 @@ Jupyter or override it on the command line:
 
 ```bash
 jupyter nbconvert --to notebook --execute \
-    --ExecutePreprocessor.kernel_name=ir \
+    --ExecutePreprocessor.kernel_name=contextnet_r \
     notebooks/01-getting-started.ipynb
 ```
 
@@ -179,7 +179,7 @@ micromamba run -n contextnet R -e "
 "
 ```
 
-This reports which optional packages (nichenetr, multinichenetr, Seurat, ccflowR) are available.
+This reports whether nichenetr, multinichenetr, Seurat, and ccflowR are available in the same R environment.
 
 ## Day-to-Day Usage
 
@@ -292,12 +292,12 @@ micromamba create -n contextnet -f environment.yml -y
 |---------|----------|
 | `BiocManager` not found when running step 2 manually | Already in `environment.yml` as `r-biocmanager`. Recreate the env or run `micromamba install -n contextnet -c conda-forge r-biocmanager -y`. |
 | `hdf5r` configure error: "hdf5 does not seem to be installed" | Already in `environment.yml` as `r-hdf5r` (conda-prebuilt with bundled HDF5). Recreate the env or run `micromamba install -n contextnet -c conda-forge r-hdf5r -y`. |
-| `remotes::install_github('settylab/ccflowR')` returns 404 | The repo is private. Export `GITHUB_PAT` (classic PAT with `repo` scope, or `$(gh auth token)`) and re-run the bootstrap. Without a PAT, ccflowR is skipped and only the tutorial Sankey visualization is unavailable. |
+| `remotes::install_github('settylab/ccflowR')` returns 404 | The repo is private. Export `GITHUB_PAT` (classic PAT with `repo` scope, or `$(gh auth token)`) and re-run the bootstrap. ContextNet core analysis can run without ccflowR, but Tutorials 02/03 require it to render the committed Sankey river plots. |
 | `failed to lock directory` after a killed install | Stale `00LOCK-<pkg>` directories. Re-run `Rscript inst/bootstrap.R` — the bootstrap clears them. To clear manually: `rm -rf $CONDA_PREFIX/lib/R/library/00LOCK-*`. |
 | `nloptr` fails to compile | Already in `environment.yml` as `nlopt + r-nloptr`. If your env predates that, run `micromamba install -n contextnet -c conda-forge nlopt r-nloptr r-lme4 -y`. |
 | `repo.anaconda.com` unreachable | Use only `conda-forge` and `bioconda` channels; pass `--override-channels`. The shipped `environment.yml` already does this. |
 | "Operation not permitted" on macOS source build | macOS extended attributes on the working tree: `xattr -cr /path/to/ContextNet`. |
-| IRkernel not available in Jupyter | `micromamba run -n contextnet R -e "IRkernel::installspec()"`. |
+| ContextNet R kernel not available in Jupyter | `micromamba run -n contextnet R -e "IRkernel::installspec(name = 'contextnet_r', displayname = 'ContextNet R')"`. |
 | Package version conflicts | Pin the problematic package in `environment.yml` or install it last via R. |
 
 ## Quick Reference
