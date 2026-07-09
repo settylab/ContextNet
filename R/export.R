@@ -92,13 +92,16 @@ NULL
 #'                                     threshold_quantile = 0.95)
 #'
 #' # Use directly with ccflowR in R (no file export needed)
-#' library(ccflowR)
-#' sankey_flow(sankey_data, cell_colors)
+#' if (requireNamespace("ccflowR", quietly = TRUE)) {
+#'   ccflowR::sankey_plot(sankey_data, colors = cell_colors)
+#' }
 #'
 #' # --- MultiNicheNet workflow (single call, all receivers) ---
 #' mn_data <- prepare_for_ccflowr(result_multi, framework = "multinichenet")
 #' sankey_data <- combine_sankey_data(mn_data, threshold_quantile = 0.95)
-#' sankey_flow(sankey_data, cell_colors)
+#' if (requireNamespace("ccflowR", quietly = TRUE)) {
+#'   ccflowR::sankey_plot(sankey_data, colors = cell_colors)
+#' }
 #' }
 #'
 #' @export

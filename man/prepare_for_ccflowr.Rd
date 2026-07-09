@@ -29,7 +29,7 @@ extracting ligand/receptor expression levels}
 }
 \value{
 A data.frame ready for ccflowR visualization functions (e.g.,
-ccflowR::sankey_flow()) with columns: sender, ligand, receptor, receiver,
+ccflowR::sankey_plot()) with columns: sender, ligand, receptor, receiver,
 scaled_activity, scaled_ligand_expression, scaled_receptor_expression
 }
 \description{
@@ -65,10 +65,9 @@ sankey_data <- prepare_for_ccflowr(result, seurat_obj,
                                     receiver = "Fibroblast")
 
 # Use directly with ccflowR in R (no file export needed)
-library(ccflowR)
-sankey_flow(sankey_data, cell_colors,
-            flow_method = "flow_conserving",
-            node_color_mode = "weighted_mix")
+if (requireNamespace("ccflowR", quietly = TRUE)) {
+  ccflowR::sankey_plot(sankey_data, colors = cell_colors)
+}
 }
 
 }

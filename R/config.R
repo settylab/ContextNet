@@ -199,7 +199,7 @@ check_ecosystem <- function(verbose = TRUE) {
             cli::cli_alert_success("ccflowR {ccflowr_version} (sankey visualization available)")
         } else {
             cli::cli_alert_info("ccflowR not found (optional, for sankey flow visualization)")
-            cli::cli_alert_info("Install: {.code devtools::install_github('username/ccflowR')}")
+            cli::cli_alert_info("Install once public: {.code devtools::install_github('settylab/ccflowR')}")
         }
     }
 
