@@ -20,7 +20,7 @@ A ContextGRN object
 }
 \description{
 Import a GRN from a gene x TF matrix stored as CSV.
-This is the format produced by the contextnet-pipeline.
+This is the format produced by the context_specific_grn.
 The matrix has genes as rows and TFs as columns, with regulatory
 weights as values.
 }

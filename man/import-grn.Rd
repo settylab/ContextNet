@@ -5,5 +5,5 @@
 \title{GRN Import Functions}
 \description{
 Functions for importing gene regulatory networks from various sources
-including the contextnet-pipeline, SCENIC+, Pando, and table formats.
+including the context_specific_grn, SCENIC+, Pando, and table formats.
 }

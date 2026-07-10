@@ -8,7 +8,7 @@ ContextNet depends on R, Bioconductor packages, GitHub-only R packages, and comp
 
 ## Prerequisites
 
-Install micromamba, then restart your shell.
+Install micromamba, then restart the shell.
 
 ```bash
 # macOS with Homebrew
@@ -17,7 +17,7 @@ brew install micromamba
 # Linux or macOS with the installer
 "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
 
-# Initialize your shell, then restart the terminal
+# Initialize the shell, then restart the terminal
 micromamba shell init -s bash  # or zsh/fish
 
 micromamba --version
@@ -42,7 +42,7 @@ This installs:
 - Jupyter and IRkernel for notebooks,
 - `rmarkdown` and `knitr` for RStudio/R Markdown users.
 
-If a global conda configuration adds the Anaconda default channel and your network blocks it, override channels explicitly:
+If a global conda configuration adds the Anaconda default channel and the network blocks it, override channels explicitly:
 
 ```bash
 micromamba create -n contextnet -f environment.yml --override-channels -y
@@ -56,15 +56,15 @@ After creating the environment, run the bootstrap script. It installs required G
 micromamba run -n contextnet Rscript inst/bootstrap.R
 ```
 
-The bootstrap is idempotent. It skips packages that already satisfy the required version, clears stale `00LOCK-*` directories from interrupted installs, and then runs `check_ecosystem()` so you can see which optional components are available.
+The bootstrap is idempotent. It skips packages that already satisfy the required version, clears stale `00LOCK-*` directories from interrupted installs, and then runs `check_ecosystem()` to report which optional components are available.
 
 The bootstrap uses hard dependencies for the ContextNet install. That keeps installation reliable for external users because optional visualization packages do not block the core package install.
 
 ## Optional: Install ccflowR for Sankey/River Plots
 
-`ccflowR` is optional visualization support. It renders sender -> ligand -> receptor -> receiver communication paths as Sankey/river plots, which is helpful when the result table contains many plausible cell-cell communication routes and you need to inspect the highest-priority paths. ContextNet core analysis does not require `ccflowR`; only Sankey/river plot cells require it.
+`ccflowR` is optional visualization support. It renders sender -> ligand -> receptor -> receiver communication paths as Sankey/river plots, which is helpful when the result table contains many plausible cell-cell communication routes and the highest-priority paths need inspection. ContextNet core analysis does not require `ccflowR`; only Sankey/river plot cells require it.
 
-Once the `settylab/ccflowR` repository is public, install it into the same environment:
+Install `ccflowR` into the same environment:
 
 ```bash
 micromamba run -n contextnet R -e "remotes::install_github('settylab/ccflowR', upgrade = 'never')"
@@ -76,7 +76,7 @@ Or opt in during bootstrap:
 INSTALL_CCFLOWR=true micromamba run -n contextnet Rscript inst/bootstrap.R
 ```
 
-If `ccflowR` is unavailable, do not use a lab-private token as part of the public installation path. Install ContextNet core, run Tutorial 01, and skip Sankey/river plots until `ccflowR` is public.
+If `ccflowR` is unavailable, install ContextNet core, run Tutorial 01, and skip Sankey/river plots until the optional plotting package is installed.
 
 ## Register the Jupyter Kernel
 
@@ -128,7 +128,7 @@ First verify the package ecosystem:
 micromamba run -n contextnet R -e "library(ContextNet); check_ecosystem(verbose = TRUE)"
 ```
 
-Then run Tutorial 01. It uses the packaged synthetic smoke-test fixture under `inst/extdata/contextnet_smoke/` and should not require any lab-private Seurat, AnnData, or NicheNet files. A successful run should produce:
+Then run Tutorial 01. It uses the small example dataset under `inst/extdata/contextnet_smoke/` and does not require HNSCC tutorial data. A successful run should produce:
 
 - a `ContextGRN` with 4 regulatory edges,
 - a `ContextNetwork` with a small ligand-target matrix,
@@ -138,7 +138,7 @@ Then run Tutorial 01. It uses the packaged synthetic smoke-test fixture under `i
 
 ## Manual Install Steps
 
-Use these commands if you need to debug the bootstrap one step at a time.
+Use these commands to debug the bootstrap one step at a time.
 
 ```bash
 # Activate the environment
@@ -169,7 +169,7 @@ R -e "remotes::install_local('.', dependencies = NA, upgrade = 'never')"
 | `BiocManager` not found | Recreate the env from `environment.yml` or run `micromamba install -n contextnet -c conda-forge r-biocmanager -y`. |
 | `hdf5r` configure error: "hdf5 does not seem to be installed" | Use the micromamba env, which includes `r-hdf5r`; outside the env, install HDF5 development libraries first. |
 | `nloptr` fails to compile | Use the micromamba env, which includes `nlopt` and `r-nloptr`; outside the env, install system `nlopt` first. |
-| `ccflowR` cannot be installed | ContextNet core still works. Install `ccflowR` from the public GitHub repo once available, then rerun only the Sankey/river plot cells. |
+| `ccflowR` cannot be installed | ContextNet core still works. Install `ccflowR` from [settylab/ccflowR](https://github.com/settylab/ccflowR), then rerun only the Sankey/river plot cells. |
 | `failed to lock directory` after an interrupted install | Re-run `Rscript inst/bootstrap.R`, or manually remove `00LOCK-*` directories from the first `.libPaths()` entry. |
 | `repo.anaconda.com` unreachable | Use `--override-channels`; this repo's `environment.yml` only requires conda-forge and bioconda. |
 | Jupyter uses the wrong R | Register and select `ContextNet R`; remove the confusing `ir` kernelspec if it points to the same environment. |
