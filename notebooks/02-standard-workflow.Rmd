@@ -5,29 +5,29 @@ output: html_document
 
 <!-- Generated from the companion Jupyter notebook. Open this file in RStudio and run chunks interactively. -->
 
-# Standard NicheNet Workflow: Contralateral Epithelial Subtypes
+# ContextNet Workflow: Ligand Activity for Contralateral Receiver Cell States
 
 ## Biological System
 
-This tutorial uses the head-and-neck squamous cell carcinoma (HNSCC) dataset and restricts the analysis to **contralateral tissue** (`C`). Contralateral tissue provides one tissue context for asking how epithelial cell states differ from one another. Paper link: [ContextNet manuscript](../README.md#citation).
+This tutorial uses the head-and-neck squamous cell carcinoma (HNSCC) contralateral sc-multiome dataset and restricts the analysis to **contralateral tissue** (`C`). Contralateral tissue provides one tissue context for asking which ligand activities explain receiver cell states. Paper link: [ContextNet manuscript](../README.md#citation).
 
-The analysis focuses on four epithelial subtypes: **basal**, **parabasal**, **suprabasal**, and **dividing** cells. ContextNet asks which sender-cell ligands can explain the gene program that distinguishes each epithelial subtype from the other epithelial subtypes in the same contralateral tissue.
+In this dataset, the receiver cell states are four epithelial subtypes: **basal**, **parabasal**, **suprabasal**, and **dividing** cells. ContextNet asks which sender-cell ligands can explain the gene program that distinguishes each receiver cell state from the other receiver states in the same contralateral tissue.
 
 ## Biological Question
 
-Question addressed: **within contralateral HNSCC tissue, which sender ligands are most consistent with the basal, parabasal, suprabasal, and dividing epithelial programs?**
+Question addressed: **within contralateral HNSCC tissue, which sender ligands have the strongest ContextNet support for each receiver cell-state program?**
 
-The goal is to identify signaling hypotheses that may support epithelial-subtype organization inside the contralateral tissue context. Each analysis defines one epithelial subtype against the other epithelial subtypes, then asks which ligands recover that subtype program through the ContextNet ligand-target matrix.
+The goal is to identify ligand activities and target genes that explain receiver cell-state programs inside the contralateral tissue context. Each analysis defines one receiver cell state against the other receiver states, then asks which ligands recover that state program through the ContextNet ligand-target matrix.
 
 ## Workflow Outline
 
 This tutorial:
 
 - Builds a reusable `ContextNetwork` from a context-specific gene regulatory network (GRN).
-- Restricts a NicheNet-style analysis to one biological tissue context.
-- Runs epithelial-subtype ligand prioritization for basal, parabasal, suprabasal, and dividing epithelial cells.
+- Runs a ContextNet ligand-activity analysis in one biological tissue context.
+- Runs ligand prioritization for basal, parabasal, suprabasal, and dividing receiver cell states.
 - Interprets ligand activity scores, ligand-target support, and ccflowR Sankey river plots. ccflowR is optional visualization support for path-level communication hypotheses: it turns sender -> ligand -> receptor -> receiver tables into river diagrams that are easier to inspect than long ranked tables.
-- Exports epithelial-subtype result tables for downstream review.
+- Exports receiver-cell result tables for downstream review.
 
 ## Environment and Data Setup
 
@@ -41,6 +41,8 @@ suppressWarnings(suppressPackageStartupMessages({
     library(dplyr)
     library(ggplot2)
     library(ccflowR)
+    library(htmlwidgets)
+    library(IRdisplay)
 }))
 
 theme_set(theme_minimal(base_family = "sans"))
@@ -96,7 +98,7 @@ GROUP_COL <- "Fine_Cell_Types"
 SENDER <- NULL        # NULL auto-detects sender cell types by abundance.
 RECEIVERS <- c("basal", "parabasal", "suprabasal", "dividing")
 MIN_CELLS <- 500      # Minimum cells required for automatic sender inclusion.
-TOP_N_LIGANDS <- 30   # Ligands retained for tables and Sankey input.
+TOP_N_LIGANDS <- 30   # Ligands retained for ranking tables, target review, and Sankey input.
 
 # Each epithelial subtype is compared with the other epithelial subtypes.
 RECEIVER_COMPARISONS <- stats::setNames(
@@ -111,6 +113,18 @@ if (length(missing_inputs) > 0 || !dir.exists(NICHENET_DB)) {
 stopifnot(requireNamespace("ccflowR", quietly = TRUE))
 cat("GRN file:", display_path(GRN_FILE), "\n")
 cat("Seurat file:", display_path(SEURAT_FILE), "\n")
+
+# Render the ccflowR widget through the HTML representation used by IRkernel.
+# The iframe isolates the widget JavaScript so notebook exports can display the river plot.
+render_sankey_widget <- function(widget, width, height) {
+    cat("Rendering ccflowR Sankey river plot as an HTML iframe")
+    widget_html <- paste(repr::repr_html(widget), collapse = "")
+    IRdisplay::display_html(sprintf(
+        '<iframe title="ccflowR Sankey river plot" width="%s" height="%s" style="border:0;" srcdoc="%s"></iframe>',
+        width, height, htmltools::htmlEscape(widget_html, attribute = TRUE)
+    ))
+}
+
 cat("NicheNet DB:", display_path(NICHENET_DB), "\n")
 ```
 
@@ -139,12 +153,12 @@ head(edges(grn))
 
 ## Step 2: Integrate with NicheNet
 
-This replaces NicheNet's generic gene regulatory network with the context-specific GRN while preserving NicheNet's curated ligand-receptor interactions and signaling pathways. The result is a context-specific ligand-target matrix computed via Personalized PageRank.
+This integrates the context-specific GRN with NicheNet's curated ligand-receptor interactions and signaling pathways. The result is a context-specific ligand-target matrix computed via Personalized PageRank.
 
 Three integration modes are available:
-- **`replace`** (default): Completely replace NicheNet's GRN — most context-specific
-- **`augment`**: Add the context-specific GRN edges to NicheNet's existing network
-- **`weighted`**: Weighted combination of both networks
+- **`replace`** (default): Use the context-specific GRN as the regulatory layer
+- **`augment`**: Add context-specific GRN edges to the prior regulatory layer
+- **`weighted`**: Use a weighted combination of the prior regulatory layer and the context-specific GRN
 
 > **Matrix reuse:** The ligand-target matrix produced here is a standard R matrix. It can be extracted with `ligand_target_matrix(network)` and used directly in any [nichenetr workflow](https://github.com/saeyslab/nichenetr/blob/master/vignettes/seurat_steps.md) in place of the default matrix. Steps 3-7 below use ContextNet's convenience wrappers, but those wrappers are optional.
 
@@ -256,7 +270,7 @@ run_receiver_analysis <- function(receiver) {
         min_pct = 0.2,
         min_pct_de = 0.05,
         nichenet_database = NICHENET_DB,
-        top_n_ligands = TOP_N_LIGANDS
+        top_n_ligands = TOP_N_LIGANDS  # retain top ligands for tables, targets, and flow plots
     ))
 }
 
@@ -417,7 +431,7 @@ suppressWarnings(print(
         y_name = "Prioritized ligand",
         x_name = "Receiver state",
         legend_title = "AUPR_c",
-        color = "darkorange"
+        color = "#2166AC"
     ) + ggtitle("Receiver-specific ligand activity scores")
 ))
 ```
@@ -471,6 +485,7 @@ The final plot uses a strict global top-path threshold. If one epithelial subtyp
 
 ```{r 02_standard_workflow_cell_39, message=TRUE, warning=TRUE}
 # Build the subset_data_top3 object used by the HNSCC tutorial figure.
+# Keep the same ligand count used for ranking so the table and river plot summarize the same hypotheses.
 data_basal <- prepare_for_ccflowr(
     receiver_results[["basal"]], expression_data = seurat_c, network = network,
     top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS
@@ -543,7 +558,7 @@ sankey_plot <- suppressMessages(
         ccflowR::sankey_font(family = "Arial", size = 12) +
         ccflowR::sankey_layout(width = 800, height = 1083)
 )
-print(sankey_plot)
+render_sankey_widget(sankey_plot, width = 800, height = 1083)
 ```
 
 ## Step 7: Export

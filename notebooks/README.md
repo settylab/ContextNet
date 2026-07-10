@@ -1,14 +1,14 @@
 # ContextNet Tutorials
 
-ContextNet extends NicheNet by replacing the generic gene regulatory network with a context-specific gene regulatory network (GRN). ContextNet is useful when a regulatory network inferred from sc-multiomic data should guide ligand-target predictions instead of a generic prior. The tutorials move from installation verification and object orientation to HNSCC analyses that ask which communication programs may explain epithelial subtype organization and condition-associated signaling programs.
+ContextNet is an R package for context-aware cell-cell communication analysis. It uses a gene regulatory network (GRN) inferred from sc-multiomic data to adapt NicheNet-style ligand-target prediction to the biological context being analyzed. Instead of relying only on a generic regulatory prior, ContextNet asks which sender ligands can explain receiver gene programs through regulatory relationships measured in the study. The tutorials start with installation and object checks, then move to HNSCC sc-multiome analyses that rank ligand activities, identify target genes supporting those activities, and visualize sender-ligand-receptor-receiver flows with ccflowR.
 
 ## Tutorial Map
 
 | Tutorial | Question addressed | Data mode | Main output | Suitable use |
 |----------|--------------------|-----------|-------------|--------------|
 | [01 Getting Started](01-getting-started.ipynb) / [Rmd](01-getting-started.Rmd) | Does ContextNet load correctly, and what do the core inputs and outputs contain? | Included example dataset | `ContextGRN`, `ContextNetwork`, `ContextResult`, expected plots | Installation checks and object-model orientation |
-| [02 Standard Workflow](02-standard-workflow.ipynb) / [Rmd](02-standard-workflow.Rmd) | Which communication programs may explain epithelial cell states within one tissue context? | HNSCC Seurat object + context-specific GRN | epithelial-subtype ligand activity, target heatmaps, ccflowR Sankey river paths | Single-tissue ContextNet analysis across epithelial subtypes |
-| [03 Multi-Condition Workflow](03-multicondition-workflow.ipynb) / [Rmd](03-multicondition-workflow.Rmd) | Which communication programs change reproducibly across biological samples? | HNSCC replicate-aware MultiNicheNet analysis | prioritization table, abundance information, ccflowR Sankey paths | Sample-aware inference with biological replicates |
+| [02 Standard Workflow](02-standard-workflow.ipynb) / [Rmd](02-standard-workflow.Rmd) | Which communication programs may explain receiver cell states within one tissue context? | HNSCC contralateral sc-multiome | ligand activity ranking, targets explaining ligand activity, and sender-ligand-receptor-receiver communication flow with ccflowR | Find ligand activities that explain receiver cell states |
+| [03 Multi-Condition Workflow](03-multicondition-workflow.ipynb) / [Rmd](03-multicondition-workflow.Rmd) | Which communication programs change within the same cell type across biological conditions? | HNSCC contralateral sc-multiome (condition 1) and normal-adjacent sc-multiome (condition 2) | condition-associated communication changes and cell-cell communication flow with ccflowR | Differential cell-cell communication analysis across conditions |
 
 RStudio users can open the companion `.Rmd` files in this directory. They contain the same source cells as the notebooks and are meant for interactive execution, not package build-time vignettes.
 
@@ -51,22 +51,25 @@ ContextNet separates the analysis into three object classes:
 Accessor functions extract ordinary R objects for inspection, plotting, and export. Tutorial 01 explains these objects with printed output in the [object model summary](01-getting-started.ipynb#Object-Model-Summary).
 
 ```r
-edges(grn)
-tfs(grn)
-targets(grn)
-regulons(grn)
+# ContextGRN accessors: inspect the imported regulatory network.
+edges(grn)       # transcription-factor -> target-gene regulatory edge table
+tfs(grn)         # transcription factors represented in the GRN
+targets(grn)     # target genes represented in the GRN
+regulons(grn)    # target genes grouped by transcription factor
 
-ligand_target_matrix(network)
-ligands(network)
-integration_params(network)
+# ContextNetwork accessors: inspect the integrated ligand-target model.
+ligand_target_matrix(network)  # target-gene x ligand regulatory-potential matrix
+ligands(network)               # ligands retained after network integration
+integration_params(network)    # integration mode and propagation settings
 
-ligand_activities(result)
-top_ligands(result)
-top_targets(result)
-ligand_target_links(result)
-parameters(result)
-as.data.frame(result)
-provenance(result)
+# ContextResult accessors: inspect one ligand-activity analysis.
+ligand_activities(result)      # ranked ligand activity scores
+top_ligands(result)            # highest-ranked ligands retained for review
+top_targets(result)            # receiver target genes used for interpretation
+ligand_target_links(result)    # ligand-target links supporting the ranking
+parameters(result)             # sender, receiver, contrast, and threshold settings
+as.data.frame(result)          # flat export table for downstream analysis
+provenance(result)             # package and runtime provenance for reproducibility
 ```
 
 ## ccflowR in the Tutorials

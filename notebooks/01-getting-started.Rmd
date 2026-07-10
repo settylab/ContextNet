@@ -7,17 +7,17 @@ output: html_document
 
 # Getting Started with ContextNet
 
-**ContextNet** extends [NicheNet](https://github.com/saeyslab/nichenetr) by replacing NicheNet's generic gene regulatory network with a **context-specific gene regulatory network (GRN)** inferred from the biological system being studied. In practice, ContextNet asks whether a sender-cell ligand can explain a receiver-cell gene program through regulatory edges that are active in that context.
+**ContextNet** adapts [NicheNet](https://github.com/saeyslab/nichenetr)-style ligand-target prediction by using a **context-specific gene regulatory network (GRN)** inferred from sc-multiomic data or another regulatory-inference workflow. In practice, ContextNet asks whether a sender-cell ligand can explain a receiver-cell gene program through regulatory edges that are active in that context.
 
 ## Goal of Tutorial 01
 
-This tutorial is a smoke test and object-model walkthrough. It uses a small synthetic example dataset included with the package, so the first ContextNet check does not require the HNSCC tutorial data. The expected result is simple by design: ligand `TGFB1` should rank above `FGF2` because the toy gene regulatory network connects `TGFB1` more strongly to the receiver target program.
+This tutorial is a smoke test and object-model walkthrough. It uses a small synthetic example dataset included with the package. The expected result is simple by design: ligand `TGFB1` should rank above `FGF2` because the toy gene regulatory network connects `TGFB1` more strongly to the receiver target program.
 
 The synthetic result should not be interpreted biologically. Its purpose is to show what files ContextNet expects, what objects it creates, what the printed output should look like, and how tables can be extracted for downstream analysis.
 
 ## What Is a Context-Specific Gene Regulatory Network (GRN)?
 
-A **gene regulatory network (GRN)** describes which transcription factors regulate which target genes and how strongly those regulatory edges are supported. NicheNet includes a generic GRN compiled from public prior knowledge. ContextNet replaces that generic GRN with a context-specific GRN inferred from matched single-cell RNA-seq and single-cell ATAC-seq or another upstream regulatory-inference workflow.
+A **gene regulatory network (GRN)** describes which transcription factors regulate which target genes and how strongly those regulatory edges are supported. NicheNet uses a generic regulatory prior compiled from public knowledge. ContextNet replaces the regulatory-network component of that prior with a context-specific GRN inferred from matched single-cell RNA-seq and single-cell ATAC-seq or another upstream regulatory-inference workflow.
 
 This matters because ligand-target prediction depends on the regulatory layer. If the GRN is generic, a ligand can be prioritized through regulatory edges that may not be active in the tissue, disease state, or cell population being studied. If the GRN is context-specific, the ligand-target matrix is constrained by the regulatory relationships observed in the profiled system.
 
@@ -43,6 +43,8 @@ suppressPackageStartupMessages({
     library(Seurat)
     library(nichenetr)
     library(ggplot2)
+    library(htmlwidgets)
+    library(IRdisplay)
 })
 
 # ccflowR is optional. ContextNet should still run when only the river plot
@@ -84,6 +86,20 @@ display_path <- function(path) {
 }
 
 cat("Using project root:", basename(getwd()), "\n")
+
+CACHE_DIR <- file.path(PROJECT_DIR, "data", "cache", "tutorial-01-outputs")
+if (!dir.exists(CACHE_DIR)) dir.create(CACHE_DIR, recursive = TRUE)
+
+# Render the ccflowR widget through the HTML representation used by IRkernel.
+# The iframe isolates the widget JavaScript so notebook exports can display the river plot.
+render_sankey_widget <- function(widget, width, height) {
+    cat("Rendering ccflowR Sankey river plot as an HTML iframe")
+    widget_html <- paste(repr::repr_html(widget), collapse = "")
+    IRdisplay::display_html(sprintf(
+        '<iframe title="ccflowR Sankey river plot" width="%s" height="%s" style="border:0;" srcdoc="%s"></iframe>',
+        width, height, htmltools::htmlEscape(widget_html, attribute = TRUE)
+    ))
+}
 
 SMOKE_DIR <- Sys.getenv(
     "CONTEXTNET_SMOKE_DIR",
@@ -187,8 +203,8 @@ result <- predict_ligand_activity_nichenet(
     receiver = RECEIVER,          # receiver population carrying the target program
     geneset_oi = GENESET_OI,      # deterministic toy receiver program
     group_col = GROUP_COL,        # metadata column containing cell-population labels
-    top_n_ligands = 2,
-    top_n_targets = 4,
+    top_n_ligands = 2,       # retain both toy ligands so the ranking is visible
+    top_n_targets = 4,       # retain all toy targets so target support is visible
     nichenet_database = NICHENET_DB,
     verbose = TRUE
 )
@@ -262,7 +278,7 @@ sankey_raw <- prepare_for_ccflowr(
     result,
     expression_data = seurat_obj,
     network = network,
-    top_n_ligands = 2,
+    top_n_ligands = 2,       # retain both toy ligands in the Sankey input
     group_col = GROUP_COL,
     min_cells = 5
 )
@@ -289,7 +305,7 @@ if (HAS_CCFLOWR) {
             ccflowR::sankey_font(family = "Arial", size = 12) +
             ccflowR::sankey_layout(width = 760, height = 520)
     )
-    print(sankey_plot)
+    render_sankey_widget(sankey_plot, width = 760, height = 520)
 } else {
     message("Skipping Sankey plot because ccflowR is not installed.")
 }
@@ -349,7 +365,7 @@ object_summary
 If this notebook runs successfully, the installation is functional for the core ContextNet workflow. Next steps depend on the available data:
 
 - Use Tutorial 02 for a real Seurat object and a context-specific GRN in a single-tissue epithelial-subtype analysis.
-- Use Tutorial 03 for biological replicates and sample-aware MultiNicheNet prioritization.
+- Use Tutorial 03 for differential cell-cell communication analysis across conditions.
 - Replace the smoke-test `gene_x_tf.csv` with a study-specific gene regulatory network (GRN), and replace the smoke-test Seurat object with the expression object for the study.
 
 ```{r 01_getting_started_cell_30, message=TRUE, warning=TRUE}

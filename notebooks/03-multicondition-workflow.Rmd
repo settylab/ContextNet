@@ -5,23 +5,23 @@ output: html_document
 
 <!-- Generated from the companion Jupyter notebook. Open this file in RStudio and run chunks interactively. -->
 
-# Multi-Condition Analysis with MultiNicheNet
+# Differential Cell-Cell Communication Across Conditions
 
 ## Biological System
 
-This tutorial uses a head-and-neck squamous cell carcinoma (HNSCC) dataset with multiple biological samples from contralateral (`C`) and normal-adjacent (`N`) tissue. The epithelial subtypes of interest are basal, parabasal, suprabasal, and dividing cells. Unlike Tutorial 02, this workflow treats **sample** as the experimental unit and asks whether communication programs remain prioritized after accounting for biological replicates. Paper link: [ContextNet manuscript](../README.md#citation).
+This tutorial uses head-and-neck squamous cell carcinoma (HNSCC) contralateral sc-multiome data as condition 1 and normal-adjacent sc-multiome data as condition 2. The workflow compares sender-ligand-receptor programs between conditions for the same receiver cell types: basal, parabasal, suprabasal, and dividing cells. Paper link: [ContextNet manuscript](../README.md#citation).
 
 ## Biological Question
 
-Question addressed: **which sender-ligand-receptor programs differ reproducibly between contralateral and normal-adjacent tissue across biological samples, for basal, parabasal, suprabasal, and dividing epithelial subtypes?**
+Question addressed: **which sender-ligand-receptor communication programs change between contralateral and normal-adjacent tissue within the same receiver cell type?**
 
-This question matters because cell-level analyses can overstate evidence when many cells come from the same patient or sample. MultiNicheNet uses sample-aware pseudobulk logic and includes cell abundance information, so the result should be read as a replicate-aware differential communication hypothesis rather than a ligand-only ranking.
+This question matters because the same receiver cell type can receive different signals across tissue conditions. MultiNicheNet combines expression, differential regulation, ligand activity, receptor support, and cell abundance information to prioritize condition-associated communication changes.
 
 ## Workflow Outline
 
 This tutorial:
 
-- Verifies that each condition has biological replicates and epithelial-subtype abundance.
+- Verifies that each condition has biological samples and receiver-cell abundance information.
 - Builds or reuses the ContextNet ligand-target matrix.
 - Runs a MultiNicheNet differential communication analysis across four epithelial subtypes.
 - Interprets prioritization scores as composite evidence from expression, differential regulation, ligand activity, receptor support, and abundance.
@@ -40,7 +40,7 @@ This tutorial:
 
 ## Environment and Data Setup
 
-Install ContextNet before starting this tutorial using the repository [installation instructions](../README.md#installation). The cells below are not installation steps. They only load packages, set public relative data paths, and define the replicate-aware biological contrast used in this notebook.
+Install ContextNet before starting this tutorial using the repository [installation instructions](../README.md#installation). The cells below are not installation steps. They only load packages, set public relative data paths, and define the differential communication contrast used in this notebook.
 
 ```{r 03_multicondition_workflow_cell_03, message=TRUE, warning=TRUE}
 suppressWarnings(suppressPackageStartupMessages({
@@ -50,6 +50,8 @@ suppressWarnings(suppressPackageStartupMessages({
     library(dplyr)
     library(ggplot2)
     library(ccflowR)
+    library(htmlwidgets)
+    library(IRdisplay)
 }))
 
 theme_set(theme_minimal(base_family = "sans"))
@@ -111,7 +113,7 @@ SAMPLE_COL <- "sample"
 MIN_CELLS <- 10          # Minimum cells per cell type per sample for pseudobulk support.
 LOGFC_THRESHOLD <- 0.25  # Differential-expression threshold used by MultiNicheNet.
 FRACTION_CUTOFF <- 0.05  # Minimum expressing fraction for ligand/receptor support.
-TOP_N_TARGET <- 250      # Target genes retained per ligand.
+TOP_N_TARGET <- 250      # Target genes retained per ligand for activity and target interpretation.
 N_CORES <- as.integer(Sys.getenv("CONTEXTNET_MN_N_CORES", unset = "1"))
 
 missing_inputs <- c(GRN_FILE, SEURAT_FILE)[!file.exists(c(GRN_FILE, SEURAT_FILE))]
@@ -123,6 +125,18 @@ cat("GRN file:", display_path(GRN_FILE), "\n")
 cat("Seurat file:", display_path(SEURAT_FILE), "\n")
 cat("NicheNet DB:", display_path(NICHENET_DB), "\n")
 cat("Precomputed MultiNicheNet result:", display_path(PRECOMPUTED_MULTINICHENET), "\n")
+
+# Render the ccflowR widget through the HTML representation used by IRkernel.
+# The iframe isolates the widget JavaScript so notebook exports can display the river plot.
+render_sankey_widget <- function(widget, width, height) {
+    cat("Rendering ccflowR Sankey river plot as an HTML iframe")
+    widget_html <- paste(repr::repr_html(widget), collapse = "")
+    IRdisplay::display_html(sprintf(
+        '<iframe title="ccflowR Sankey river plot" width="%s" height="%s" style="border:0;" srcdoc="%s"></iframe>',
+        width, height, htmltools::htmlEscape(widget_html, attribute = TRUE)
+    ))
+}
+
 cat("Use precomputed MultiNicheNet result:", USE_PRECOMPUTED_MULTINICHENET, "\n")
 ```
 
@@ -298,7 +312,7 @@ if (USE_PRECOMPUTED_MULTINICHENET && file.exists(PRECOMPUTED_MULTINICHENET)) {
         min_cells = MIN_CELLS,
         logfc_threshold = LOGFC_THRESHOLD,
         fraction_cutoff = FRACTION_CUTOFF,
-        top_n_target = TOP_N_TARGET,
+        top_n_target = TOP_N_TARGET,  # targets retained per ligand in the differential analysis
         nichenet_database = NICHENET_DB,
         n_cores = N_CORES,
         verbose = TRUE
@@ -347,7 +361,7 @@ head(ligand_summary, 15)
 
 ### Reading the MultiNicheNet Table
 
-For this workflow, a high-ranked row should be read as a **sample-aware differential communication program**. The score is not only ligand activity; it combines ligand/receptor expression, differential regulation, target activity, and sender-receiver context. Use the table to identify which component supports the path before making a biological claim.
+For this workflow, a high-ranked row should be read as a **condition-associated differential communication program**. The score is not only ligand activity; it combines ligand/receptor expression, differential regulation, target activity, and sender-receiver context. Use the table to identify which component supports the path before making a biological claim.
 
 ```{r 03_multicondition_workflow_cell_25, message=TRUE, warning=TRUE}
 head(ligand_summary$ligand, 30)
@@ -372,7 +386,7 @@ list(
     min_cells = MIN_CELLS,
     logfc_threshold = LOGFC_THRESHOLD,
     fraction_cutoff = FRACTION_CUTOFF,
-    top_n_target = TOP_N_TARGET,
+    top_n_target = TOP_N_TARGET,  # targets retained per ligand in this run
     n_cores = N_CORES,
     used_precomputed_result = USE_PRECOMPUTED_MULTINICHENET && file.exists(PRECOMPUTED_MULTINICHENET)
 )
@@ -391,7 +405,7 @@ ggplot(top_act, aes(x = prioritization_score, y = ligand)) +
     labs(
         x = "Maximum MultiNicheNet prioritization score",
         y = NULL,
-        title = "Top 30 Ligands Across Epithelial Receivers (C vs N)"
+        title = "Top 30 Ligands Across Receiver Cell Types (Contralateral vs Normal-Adjacent)"
     ) +
     theme_minimal() +
     theme(plot.title = element_text(hjust = 0.5, face = "bold"))
@@ -450,7 +464,7 @@ sankey_plot <- suppressMessages(
             receptors = c("EGFR", "GZD6", "NOTCH1", "LRP6", "ROR1", "FZD6", "ITGA9", "ITGB1", "EPHA4", "CD63")
         )
 )
-print(sankey_plot)
+render_sankey_widget(sankey_plot, width = 954, height = 1200)
 ```
 
 ## Step 6: Save Results
