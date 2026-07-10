@@ -62,7 +62,7 @@ From a downloaded or cloned ContextNet source checkout, install the local source
 remotes::install_local(".", dependencies = NA, upgrade = "never")
 ```
 
-Optional packages can be installed after the core package works. `presto` speeds up some Seurat differential-expression steps. `ccflowR` renders Sankey/river plots that show sender -> ligand -> receptor -> receiver communication paths; core ContextNet analysis does not require it.
+Optional packages can be installed after the core package works. `presto` speeds up some Seurat differential-expression steps. `ccflowR` renders Sankey/river plots that show sender -> ligand -> receptor -> receiver communication paths; core ContextNet analysis does not require it. Static PNG export from `ccflowR::sankey_save()` requires Kaleido (`kaleido<1.0`) or `webshot2`; the bundled micromamba environment installs Kaleido for notebook previews.
 
 ```r
 remotes::install_github("immunogenomics/presto", upgrade = "never")
@@ -100,7 +100,7 @@ or opt in during bootstrap:
 INSTALL_CCFLOWR=true micromamba run -n contextnet Rscript inst/bootstrap.R
 ```
 
-If `ccflowR` is not installed, ContextNet still installs and the core analyses run; only Sankey/river plot cells are unavailable. Detailed micromamba troubleshooting is available in the [installation notes](vignettes/installation-micromamba.md).
+If `ccflowR` is not installed, ContextNet still installs and the core analyses run; only Sankey/river plot cells are unavailable. The environment file includes Kaleido for static PNG previews produced by `ccflowR::sankey_save()`; custom environments should install `kaleido<1.0` in the Python environment used by `reticulate` or install `webshot2` before rerunning Sankey cells. Detailed micromamba troubleshooting is available in the [installation notes](vignettes/installation-micromamba.md).
 
 ### Verify Installation
 
@@ -121,6 +121,7 @@ For a fast functional test, run Tutorial 01. It uses the small example dataset i
 | `nichenetr` is missing during network integration | Install it with `remotes::install_github("saeyslab/nichenetr", upgrade = "never")` in the same R used by ContextNet. |
 | `multinichenetr` or Bioconductor packages fail during Tutorial 03 | Install `muscat`, `scater`, `sva`, and `scran` with `BiocManager::install()`, then install `multinichenetr` from GitHub. |
 | `ccflowR` is not available | ContextNet core analysis does not require it. Install it from [settylab/ccflowR](https://github.com/settylab/ccflowR), then rerun only the Sankey/river plot cells. |
+| ccflowR Sankey PNG preview is blank or missing | Static export dependency is missing. Install `kaleido<1.0` in the Python environment used by `reticulate` or install `webshot2`, then rerun the Sankey/river plot cells. |
 | Jupyter shows a raw `ir` kernel name | Register the intended kernel with `IRkernel::installspec(name = 'contextnet_r', displayname = 'ContextNet R')`. If an old `ir` kernelspec points to the same env and causes confusion, remove it with `jupyter kernelspec remove ir -f`. |
 | `nloptr` fails to compile from source | Install the system `nlopt` development library or use the micromamba env, which ships `nlopt` and `r-nloptr` pre-built. |
 | `hdf5r` configure: `hdf5 does not seem to be installed` | Install the platform HDF5 development libraries or use the micromamba env, which ships `r-hdf5r` with HDF5. |

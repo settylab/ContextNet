@@ -57,116 +57,46 @@ if (HAS_CCFLOWR) {
 theme_set(theme_minimal(base_family = "sans"))
 
 
-plot_static_sankey_preview <- function(path_data, title, value_col = NULL,
-                                       color_col = NULL, top_n = 20,
-                                       color_values = NULL) {
-    required_cols <- c("sender", "ligand", "receptor", "receiver")
-    missing_cols <- setdiff(required_cols, colnames(path_data))
-    if (length(missing_cols) > 0) {
-        stop("Static Sankey preview is missing required columns: ", paste(missing_cols, collapse = ", "))
-    }
-
-    df <- as.data.frame(path_data, stringsAsFactors = FALSE)
-    if (is.null(value_col)) {
-        candidates <- c("prioritization_score", "weighted_score", "scaled_weighted_score", "weight")
-        value_col <- candidates[candidates %in% colnames(df)][1]
-    }
-    if (length(value_col) == 0 || is.na(value_col)) {
-        stop("Static Sankey preview needs a numeric score column.")
-    }
-
-    df$.value <- suppressWarnings(as.numeric(df[[value_col]]))
-    df <- df[is.finite(df$.value), , drop = FALSE]
-    if (nrow(df) == 0) {
-        message("Skipping static Sankey preview because no finite path scores are available.")
-        return(invisible(NULL))
-    }
-
-    df <- df[order(df$.value, decreasing = TRUE), , drop = FALSE]
-    df <- df[seq_len(min(nrow(df), top_n)), , drop = FALSE]
-    color_col <- if (!is.null(color_col) && color_col %in% colnames(df)) color_col else "receiver"
-    df$.flow_color <- as.character(df[[color_col]])
-
-    stages <- c("sender", "ligand", "receptor", "receiver")
-    stage_labels <- c(sender = "Sender", ligand = "Ligand", receptor = "Receptor", receiver = "Receiver")
-    nodes <- do.call(rbind, lapply(seq_along(stages), function(stage_i) {
-        stage <- stages[stage_i]
-        scores <- sort(tapply(df$.value, as.character(df[[stage]]), sum, na.rm = TRUE), decreasing = TRUE)
-        y_pos <- if (length(scores) == 1) 0.5 else seq(0.95, 0.05, length.out = length(scores))
-        data.frame(stage = stage, node = names(scores), x = stage_i, y = y_pos, stringsAsFactors = FALSE)
-    }))
-    nodes$key <- paste(nodes$stage, nodes$node, sep = "___")
-    nodes$hjust <- ifelse(nodes$x == 1, 1.05, ifelse(nodes$x == length(stages), -0.05, 0.5))
-
-    key_to_y <- stats::setNames(nodes$y, nodes$key)
-    edge_pairs <- list(c("sender", "ligand"), c("ligand", "receptor"), c("receptor", "receiver"))
-    edge_rows <- list()
-    edge_i <- 1L
-    for (row_i in seq_len(nrow(df))) {
-        for (pair in edge_pairs) {
-            from_stage <- pair[1]
-            to_stage <- pair[2]
-            from_key <- paste(from_stage, as.character(df[[from_stage]][row_i]), sep = "___")
-            to_key <- paste(to_stage, as.character(df[[to_stage]][row_i]), sep = "___")
-            edge_rows[[edge_i]] <- data.frame(
-                x = match(from_stage, stages),
-                xend = match(to_stage, stages),
-                y = key_to_y[[from_key]],
-                yend = key_to_y[[to_key]],
-                value = df$.value[row_i],
-                color = df$.flow_color[row_i],
-                stringsAsFactors = FALSE
-            )
-            edge_i <- edge_i + 1L
-        }
-    }
-    edges <- do.call(rbind, edge_rows)
-
-    color_levels <- sort(unique(edges$color))
-    if (is.null(color_values)) {
-        color_values <- stats::setNames(grDevices::hcl.colors(length(color_levels), "Dark 3"), color_levels)
+display_ccflowr_sankey <- function(sankey_plot, width, height, preview = TRUE) {
+    # Display the actual interactive ccflowR widget in Jupyter/JupyterLab.
+    fig <- ccflowR::sankey_render(sankey_plot)
+    if (requireNamespace("repr", quietly = TRUE) && requireNamespace("IRdisplay", quietly = TRUE)) {
+        fig$width <- width
+        fig$height <- height
+        IRdisplay::display_html(repr::repr_html(fig))
     } else {
-        color_values <- color_values[!is.na(names(color_values))]
-        missing_colors <- setdiff(color_levels, names(color_values))
-        if (length(missing_colors) > 0) {
-            color_values <- c(
-                color_values,
-                stats::setNames(grDevices::hcl.colors(length(missing_colors), "Dark 3"), missing_colors)
-            )
-        }
-        color_values <- color_values[color_levels]
+        print(sankey_plot)
     }
 
-    ggplot() +
-        geom_curve(
-            data = edges,
-            aes(x = x, xend = xend, y = y, yend = yend, linewidth = value, alpha = value, color = color),
-            curvature = 0.25,
-            lineend = "round"
-        ) +
-        geom_point(data = nodes, aes(x = x, y = y), size = 2, color = "grey25") +
-        geom_text(data = nodes, aes(x = x, y = y, label = node, hjust = hjust), size = 2.6, lineheight = 0.9) +
-        scale_color_manual(values = color_values, name = ifelse(color_col == "group", "Condition", "Receiver")) +
-        scale_linewidth(range = c(0.25, 2.8), guide = "none") +
-        scale_alpha(range = c(0.25, 0.85), guide = "none") +
-        scale_x_continuous(breaks = seq_along(stages), labels = stage_labels, limits = c(0.65, length(stages) + 0.35)) +
-        coord_cartesian(clip = "off") +
-        labs(
-            title = title,
-            subtitle = paste0("Static preview of top ", nrow(df), " paths; the interactive ccflowR widget is printed above."),
-            x = NULL,
-            y = NULL
-        ) +
-        theme_minimal(base_family = "sans") +
-        theme(
-            panel.grid = element_blank(),
-            axis.text.y = element_blank(),
-            axis.text.x = element_text(face = "bold"),
-            axis.ticks = element_blank(),
-            legend.position = "bottom",
-            plot.title = element_text(face = "bold"),
-            plot.margin = margin(10, 40, 10, 40)
+    if (!preview) {
+        return(invisible(sankey_plot))
+    }
+    if (!requireNamespace("IRdisplay", quietly = TRUE)) {
+        message("Skipping ccflowR PNG preview because IRdisplay is unavailable.")
+        return(invisible(sankey_plot))
+    }
+
+    png_file <- tempfile(fileext = ".png")
+    exported <- FALSE
+    tryCatch({
+        ccflowR::sankey_save(sankey_plot, png_file, width = width, height = height)
+        exported <- file.exists(png_file) && file.info(png_file)[["size"]] > 0
+    }, error = function(e) {
+        message(
+            "Skipping ccflowR PNG preview because static export requires Kaleido or webshot2: ",
+            conditionMessage(e)
         )
+    })
+
+    if (exported) {
+        # Embed the PNG generated by ccflowR::sankey_save() so notebook
+        # viewers that block JavaScript still show the ccflowR river plot.
+        IRdisplay::display_png(file = png_file)
+    } else {
+        warning("ccflowR PNG preview was not created. The interactive ccflowR widget above is still available.")
+    }
+
+    invisible(sankey_plot)
 }
 ```
 
@@ -406,14 +336,7 @@ if (HAS_CCFLOWR) {
             ccflowR::sankey_font(family = "Arial", size = 12) +
             ccflowR::sankey_layout(width = 760, height = 520)
     )
-    print(sankey_plot)
-    print(plot_static_sankey_preview(
-        sankey_data,
-        title = "Static preview of ContextNet smoke-test paths",
-        color_col = "receiver",
-        top_n = 12,
-        color_values = cell_colors
-    ))
+    display_ccflowr_sankey(sankey_plot, width = 760, height = 520)
 } else {
     message("Skipping Sankey plot because ccflowR is not installed.")
 }
