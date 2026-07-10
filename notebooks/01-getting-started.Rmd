@@ -43,8 +43,6 @@ suppressPackageStartupMessages({
     library(Seurat)
     library(nichenetr)
     library(ggplot2)
-    library(htmlwidgets)
-    library(IRdisplay)
 })
 
 # ccflowR is optional. ContextNet should still run when only the river plot
@@ -90,16 +88,6 @@ cat("Using project root:", basename(getwd()), "\n")
 CACHE_DIR <- file.path(PROJECT_DIR, "data", "cache", "tutorial-01-outputs")
 if (!dir.exists(CACHE_DIR)) dir.create(CACHE_DIR, recursive = TRUE)
 
-# Render the ccflowR widget through the HTML representation used by IRkernel.
-# The iframe isolates the widget JavaScript so notebook exports can display the river plot.
-render_sankey_widget <- function(widget, width, height) {
-    cat("Rendering ccflowR Sankey river plot as an HTML iframe")
-    widget_html <- paste(repr::repr_html(widget), collapse = "")
-    IRdisplay::display_html(sprintf(
-        '<iframe title="ccflowR Sankey river plot" width="%s" height="%s" style="border:0;" srcdoc="%s"></iframe>',
-        width, height, htmltools::htmlEscape(widget_html, attribute = TRUE)
-    ))
-}
 
 SMOKE_DIR <- Sys.getenv(
     "CONTEXTNET_SMOKE_DIR",
@@ -256,7 +244,7 @@ links <- ligand_target_links(result)
 
 ggplot(links, aes(x = ligand, y = target, fill = weight)) +
     geom_tile(color = "white") +
-    scale_fill_gradient(low = "#F2F2F2", high = "#2166AC") +
+    scale_fill_gradient(low = "#F2F2F2", high = "orange") +
     labs(
         x = "Ligand",
         y = "Receiver target gene",
@@ -305,7 +293,7 @@ if (HAS_CCFLOWR) {
             ccflowR::sankey_font(family = "Arial", size = 12) +
             ccflowR::sankey_layout(width = 760, height = 520)
     )
-    render_sankey_widget(sankey_plot, width = 760, height = 520)
+    print(sankey_plot)
 } else {
     message("Skipping Sankey plot because ccflowR is not installed.")
 }

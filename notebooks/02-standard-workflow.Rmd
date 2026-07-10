@@ -9,9 +9,9 @@ output: html_document
 
 ## Biological System
 
-This tutorial uses the head-and-neck squamous cell carcinoma (HNSCC) contralateral sc-multiome dataset and restricts the analysis to **contralateral tissue** (`C`). Contralateral tissue provides one tissue context for asking which ligand activities explain receiver cell states. Paper link: [ContextNet manuscript](../README.md#citation).
+This tutorial uses the head-and-neck squamous cell carcinoma (HNSCC) contralateral sc-multiome dataset and restricts the analysis to **contralateral tissue** (`C`). Contralateral tissue provides one tissue context for asking which ligand activities explain receiver cell states. Paper link: [HNSCC manuscript](../README.md#citation).
 
-In this dataset, the receiver cell states are four epithelial subtypes: **basal**, **parabasal**, **suprabasal**, and **dividing** cells. ContextNet asks which sender-cell ligands can explain the gene program that distinguishes each receiver cell state from the other receiver states in the same contralateral tissue.
+In this dataset, the receiver cell states are four epithelial subtypes: **basal**, **parabasal**, **suprabasal**, and **dividing** cells. ContextNet asks which sender-cell ligands can explain the gene program that distinguishes each receiver cell state from the other cell states in the same tissue.
 
 ## Biological Question
 
@@ -41,8 +41,6 @@ suppressWarnings(suppressPackageStartupMessages({
     library(dplyr)
     library(ggplot2)
     library(ccflowR)
-    library(htmlwidgets)
-    library(IRdisplay)
 }))
 
 theme_set(theme_minimal(base_family = "sans"))
@@ -114,16 +112,6 @@ stopifnot(requireNamespace("ccflowR", quietly = TRUE))
 cat("GRN file:", display_path(GRN_FILE), "\n")
 cat("Seurat file:", display_path(SEURAT_FILE), "\n")
 
-# Render the ccflowR widget through the HTML representation used by IRkernel.
-# The iframe isolates the widget JavaScript so notebook exports can display the river plot.
-render_sankey_widget <- function(widget, width, height) {
-    cat("Rendering ccflowR Sankey river plot as an HTML iframe")
-    widget_html <- paste(repr::repr_html(widget), collapse = "")
-    IRdisplay::display_html(sprintf(
-        '<iframe title="ccflowR Sankey river plot" width="%s" height="%s" style="border:0;" srcdoc="%s"></iframe>',
-        width, height, htmltools::htmlEscape(widget_html, attribute = TRUE)
-    ))
-}
 
 cat("NicheNet DB:", display_path(NICHENET_DB), "\n")
 ```
@@ -160,7 +148,7 @@ Three integration modes are available:
 - **`augment`**: Add context-specific GRN edges to the prior regulatory layer
 - **`weighted`**: Use a weighted combination of the prior regulatory layer and the context-specific GRN
 
-> **Matrix reuse:** The ligand-target matrix produced here is a standard R matrix. It can be extracted with `ligand_target_matrix(network)` and used directly in any [nichenetr workflow](https://github.com/saeyslab/nichenetr/blob/master/vignettes/seurat_steps.md) in place of the default matrix. Steps 3-7 below use ContextNet's convenience wrappers, but those wrappers are optional.
+> **Matrix reuse:** The ligand-target matrix produced here is a standard R matrix. It can be extracted with `ligand_target_matrix(network)` and used directly in a [nichenetr workflow](https://github.com/saeyslab/nichenetr/blob/master/vignettes/seurat_steps.md) wherever the workflow expects `ligand_target_matrix`. ContextNet's wrappers below use that matrix for receiver gene-set definition, ligand-activity scoring, target extraction, and ccflowR input, but the matrix itself can also be passed to native nichenetr plotting functions.
 
 ### What the `ContextNetwork` Represents
 
@@ -431,7 +419,7 @@ suppressWarnings(print(
         y_name = "Prioritized ligand",
         x_name = "Receiver state",
         legend_title = "AUPR_c",
-        color = "#2166AC"
+        color = "orange"
     ) + ggtitle("Receiver-specific ligand activity scores")
 ))
 ```
@@ -468,7 +456,7 @@ suppressWarnings(print(nichenetr::make_heatmap_ggplot(
     y_name = "Predicted basal target gene",
     x_name = "Prioritized ligand",
     legend_title = "Regulatory\npotential",
-    color = "#2166AC",
+    color = "orange",
     x_axis_position = "top"
 )))
 ```
@@ -558,7 +546,7 @@ sankey_plot <- suppressMessages(
         ccflowR::sankey_font(family = "Arial", size = 12) +
         ccflowR::sankey_layout(width = 800, height = 1083)
 )
-render_sankey_widget(sankey_plot, width = 800, height = 1083)
+print(sankey_plot)
 ```
 
 ## Step 7: Export
@@ -621,8 +609,86 @@ for (pkg in session_pkgs) {
 
 ## Using the Context-Specific Matrix with nichenetr Directly
 
-The ContextNet ligand-target matrix can be extracted and passed into lower-level nichenetr functions when full control over the receiver gene set, background genes, or sender ligand universe is needed.
+The ContextNet ligand-target matrix can be extracted and passed into lower-level nichenetr functions when full control over the receiver gene set, background genes, sender ligand universe, or native NicheNet visualizations is needed. The important replacement is the matrix argument: use `ligand_target_matrix(network)` in place of the default NicheNet ligand-target matrix.
+
+```{r 02_standard_workflow_cell_48, message=TRUE, warning=TRUE}
+# Extract the context-specific matrix. Rows are target genes; columns are ligands.
+context_ltm <- ligand_target_matrix(network)
+cat("Context-specific ligand-target matrix:", nrow(context_ltm), "targets x", ncol(context_ltm), "ligands\n")
+```
+
+A native NicheNet ligand-activity workflow can use the ContextNet matrix directly:
 
 ```r
-ltm <- ligand_target_matrix(network)
+native_activities <- nichenetr::predict_ligand_activities(
+    geneset = receiver_genes,
+    background_expressed_genes = background_genes,
+    ligand_target_matrix = context_ltm,
+    potential_ligands = potential_ligands
+)
+```
+
+The same matrix can be used with native nichenetr plots. This example reuses the basal result already computed above, so the heatmap is still driven by the HNSCC contralateral ContextNet analysis rather than by the default NicheNet prior.
+
+```{r 02_standard_workflow_cell_49, message=TRUE, warning=TRUE}
+options(repr.plot.width = 10, repr.plot.height = 8)
+
+native_receiver <- "basal"
+native_ligands <- head(top_ligands(receiver_results[[native_receiver]]), 10)
+native_targets <- head(top_targets(receiver_results[[native_receiver]], n = 50), 40)
+
+native_heatmap_matrix <- context_ltm[
+    intersect(native_targets, rownames(context_ltm)),
+    intersect(native_ligands, colnames(context_ltm)),
+    drop = FALSE
+]
+
+cat("Native nichenetr heatmap input:", nrow(native_heatmap_matrix), "targets x", ncol(native_heatmap_matrix), "ligands\n")
+
+if (nrow(native_heatmap_matrix) > 0 && ncol(native_heatmap_matrix) > 0) {
+    suppressWarnings(print(nichenetr::make_heatmap_ggplot(
+        native_heatmap_matrix,
+        y_name = "Predicted target",
+        x_name = "Prioritized ligand",
+        legend_title = "Regulatory\npotential",
+        color = "orange",
+        x_axis_position = "top"
+    )))
+}
+```
+
+Native NicheNet circos plots summarize ligand-receptor paths from a prioritization table. The code below reuses `subset_data_top3`, converts the ContextNet path score to the `prioritization_score` column expected by `nichenetr::make_circos_lr()`, and keeps the same cell-type color map used in the ccflowR Sankey plot.
+
+```{r 02_standard_workflow_cell_50, message=TRUE, warning=TRUE}
+if (requireNamespace("circlize", quietly = TRUE)) {
+    options(repr.plot.width = 8, repr.plot.height = 8)
+
+    native_lr_tbl <- subset_data_top3 %>%
+        arrange(desc(weighted_score)) %>%
+        slice_head(n = 10) %>%
+        mutate(prioritization_score = scaled_weighted_score) %>%
+        select(sender, receiver, ligand, receptor, prioritization_score)
+
+    native_senders <- sort(unique(native_lr_tbl$sender))
+    native_receivers <- sort(unique(native_lr_tbl$receiver))
+    native_sender_colors <- celltype_colors[native_senders]
+    native_receiver_colors <- celltype_colors[native_receivers]
+    if (any(is.na(native_sender_colors))) {
+        native_sender_colors[is.na(native_sender_colors)] <- grDevices::hcl.colors(sum(is.na(native_sender_colors)), "Dark 3")
+    }
+    if (any(is.na(native_receiver_colors))) {
+        native_receiver_colors[is.na(native_receiver_colors)] <- grDevices::hcl.colors(sum(is.na(native_receiver_colors)), "Dark 3")
+    }
+
+    cat("Native nichenetr ligand-receptor circos rows:", nrow(native_lr_tbl), "\n")
+
+    print(nichenetr::make_circos_lr(
+        native_lr_tbl,
+        colors_sender = native_sender_colors,
+        colors_receiver = native_receiver_colors,
+        cutoff = 0
+    ))
+} else {
+    message("Install circlize to draw native nichenetr circos plots.")
+}
 ```

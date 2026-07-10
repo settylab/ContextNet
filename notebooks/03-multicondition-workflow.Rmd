@@ -9,7 +9,7 @@ output: html_document
 
 ## Biological System
 
-This tutorial uses head-and-neck squamous cell carcinoma (HNSCC) contralateral sc-multiome data as condition 1 and normal-adjacent sc-multiome data as condition 2. The workflow compares sender-ligand-receptor programs between conditions for the same receiver cell types: basal, parabasal, suprabasal, and dividing cells. Paper link: [ContextNet manuscript](../README.md#citation).
+This tutorial uses head-and-neck squamous cell carcinoma (HNSCC) contralateral sc-multiome data as condition 1 and normal-adjacent sc-multiome data as condition 2. The workflow compares sender-ligand-receptor programs between conditions for the same receiver cell types: basal, parabasal, suprabasal, and dividing cells. Paper link: [HNSCC manuscript](../README.md#citation).
 
 ## Biological Question
 
@@ -50,8 +50,6 @@ suppressWarnings(suppressPackageStartupMessages({
     library(dplyr)
     library(ggplot2)
     library(ccflowR)
-    library(htmlwidgets)
-    library(IRdisplay)
 }))
 
 theme_set(theme_minimal(base_family = "sans"))
@@ -126,16 +124,6 @@ cat("Seurat file:", display_path(SEURAT_FILE), "\n")
 cat("NicheNet DB:", display_path(NICHENET_DB), "\n")
 cat("Precomputed MultiNicheNet result:", display_path(PRECOMPUTED_MULTINICHENET), "\n")
 
-# Render the ccflowR widget through the HTML representation used by IRkernel.
-# The iframe isolates the widget JavaScript so notebook exports can display the river plot.
-render_sankey_widget <- function(widget, width, height) {
-    cat("Rendering ccflowR Sankey river plot as an HTML iframe")
-    widget_html <- paste(repr::repr_html(widget), collapse = "")
-    IRdisplay::display_html(sprintf(
-        '<iframe title="ccflowR Sankey river plot" width="%s" height="%s" style="border:0;" srcdoc="%s"></iframe>',
-        width, height, htmltools::htmlEscape(widget_html, attribute = TRUE)
-    ))
-}
 
 cat("Use precomputed MultiNicheNet result:", USE_PRECOMPUTED_MULTINICHENET, "\n")
 ```
@@ -464,7 +452,7 @@ sankey_plot <- suppressMessages(
             receptors = c("EGFR", "GZD6", "NOTCH1", "LRP6", "ROR1", "FZD6", "ITGA9", "ITGB1", "EPHA4", "CD63")
         )
 )
-render_sankey_widget(sankey_plot, width = 954, height = 1200)
+print(sankey_plot)
 ```
 
 ## Step 6: Save Results
@@ -520,8 +508,121 @@ The composite prioritization score integrates criteria such as ligand expression
 
 ## Using the Context-Specific Matrix with multinichenetr Directly
 
-For custom contrasts, paired designs, additional filtering, or direct comparison between the ContextNet matrix and the default NicheNet matrix, extract the ligand-target matrix and pass it to lower-level `multinichenetr` functions.
+For custom contrasts, paired designs, additional filtering, or direct comparison between the ContextNet matrix and the default NicheNet matrix, use the ContextNet ligand-target matrix wherever MultiNicheNet expects `ligand_target_matrix`. The matrix is a standard R matrix with targets as rows and ligands as columns.
+
+```{r 03_multicondition_workflow_cell_38, message=TRUE, warning=TRUE}
+# The precomputed tutorial result already used a ContextNet ligand-target matrix.
+# For a new native MultiNicheNet run, load the cached ContextNetwork if it exists
+# or rerun Step 2 with CONTEXTNET_USE_PRECOMPUTED_MULTINICHENET=false.
+context_ltm <- NULL
+if (exists("network") && !is.null(network)) {
+    context_ltm <- ligand_target_matrix(network)
+} else if (file.exists(NETWORK_CACHE)) {
+    network <- readRDS(NETWORK_CACHE)
+    context_ltm <- ligand_target_matrix(network)
+    cat("Loaded ContextNetwork for native MultiNicheNet reuse from:", display_path(NETWORK_CACHE), "\n")
+}
+
+if (is.null(context_ltm)) {
+    message("Context-specific ligand-target matrix is not loaded in this precomputed run. Rebuild or load NETWORK_CACHE before a native MultiNicheNet rerun.")
+} else {
+    cat("Context-specific ligand-target matrix:", nrow(context_ltm), "targets x", ncol(context_ltm), "ligands\n")
+}
+```
+
+In a native MultiNicheNet call, the key change is the `ligand_target_matrix = context_ltm` argument. The ligand-receptor network can stay as the NicheNet ligand-receptor network, while the ligand-target matrix is replaced by the ContextNet matrix:
 
 ```r
-ltm <- ligand_target_matrix(network)
+mn_native <- multinichenetr::multi_nichenet_analysis(
+    sce = sce,
+    celltype_id = GROUP_COL,
+    sample_id = SAMPLE_COL,
+    group_id = IDENT_COL,
+    batches = NA,
+    covariates = NA,
+    lr_network = lr_network,
+    ligand_target_matrix = context_ltm,
+    contrasts_oi = contrasts_oi,
+    contrast_tbl = contrast_tbl,
+    senders_oi = senders_oi,
+    receivers_oi = RECEIVERS
+)
+```
+
+The saved `pkg_mn_ctx` object can still be used for native MultiNicheNet plots because the prioritization tables were produced from the ContextNet matrix. The circos helper plots sender-ligand-receptor-receiver links from the prioritization table.
+
+```{r 03_multicondition_workflow_cell_39, message=TRUE, warning=TRUE}
+if (requireNamespace("circlize", quietly = TRUE)) {
+    options(repr.plot.width = 10, repr.plot.height = 8)
+
+    native_mn_tbl <- ctx_prio %>%
+        filter(group == IDENT_1) %>%
+        arrange(desc(prioritization_score)) %>%
+        slice_head(n = 25) %>%
+        ungroup()
+
+    native_senders <- sort(unique(native_mn_tbl$sender))
+    native_receivers <- sort(unique(native_mn_tbl$receiver))
+    native_sender_colors <- celltype_colors[native_senders]
+    native_receiver_colors <- celltype_colors[native_receivers]
+    if (any(is.na(native_sender_colors))) {
+        native_sender_colors[is.na(native_sender_colors)] <- grDevices::hcl.colors(sum(is.na(native_sender_colors)), "Dark 3")
+    }
+    if (any(is.na(native_receiver_colors))) {
+        native_receiver_colors[is.na(native_receiver_colors)] <- grDevices::hcl.colors(sum(is.na(native_receiver_colors)), "Dark 3")
+    }
+
+    mn_circos_plots <- multinichenetr::make_circos_one_group(
+        native_mn_tbl,
+        colors_sender = native_sender_colors,
+        colors_receiver = native_receiver_colors
+    )
+    grDevices::replayPlot(mn_circos_plots[[IDENT_1]])
+    grDevices::replayPlot(mn_circos_plots$legend)
+} else {
+    message("Install circlize to draw native MultiNicheNet circos plots.")
+}
+```
+
+The native NicheNet heatmap function can also visualize ligand-target support from the MultiNicheNet result. These links were computed with the ContextNet ligand-target matrix during the MultiNicheNet run.
+
+```{r 03_multicondition_workflow_cell_40, message=TRUE, warning=TRUE}
+options(repr.plot.width = 10, repr.plot.height = 8)
+
+native_mn_receiver <- "basal"
+native_mn_ligands <- ctx_prio %>%
+    filter(group == IDENT_1, receiver == native_mn_receiver) %>%
+    arrange(desc(prioritization_score)) %>%
+    distinct(ligand) %>%
+    slice_head(n = 8) %>%
+    pull(ligand)
+
+mn_heatmap_links <- pkg_mn_ctx$multinichenet_output$ligand_activities_targets_DEgenes$ligand_activities %>%
+    filter(
+        contrast == paste0(IDENT_1, "-", IDENT_2),
+        receiver == native_mn_receiver,
+        ligand %in% native_mn_ligands
+    ) %>%
+    group_by(ligand) %>%
+    slice_max(order_by = ligand_target_weight, n = 10, with_ties = FALSE) %>%
+    ungroup()
+
+cat("Native MultiNicheNet heatmap links:", nrow(mn_heatmap_links), "\n")
+
+if (nrow(mn_heatmap_links) > 0) {
+    mn_heatmap_xtabs <- stats::xtabs(ligand_target_weight ~ target + ligand, data = mn_heatmap_links)
+    mn_heatmap_matrix <- matrix(
+        as.numeric(mn_heatmap_xtabs),
+        nrow = nrow(mn_heatmap_xtabs),
+        dimnames = dimnames(mn_heatmap_xtabs)
+    )
+    suppressWarnings(print(nichenetr::make_heatmap_ggplot(
+        mn_heatmap_matrix,
+        y_name = "Predicted target",
+        x_name = "Prioritized ligand",
+        legend_title = "Regulatory\npotential",
+        color = "orange",
+        x_axis_position = "top"
+    )))
+}
 ```
