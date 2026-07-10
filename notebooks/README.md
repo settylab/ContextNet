@@ -14,7 +14,7 @@ RStudio users can open the companion `.Rmd` files in this directory. They contai
 
 ## Running the Tutorials
 
-- **Installation.** Complete package setup with the repository [installation instructions](../README.md#installation). The tutorials do not install packages; setup cells only load libraries and data.
+- **Installation.** Complete package setup with the repository [installation instructions](../README.md#installation). The README includes a direct R/RStudio installation path and a micromamba/Jupyter path. The tutorials do not install packages; setup cells only load libraries and data.
 
 - **Kernel.** The notebooks use an R kernel named `contextnet_r`, displayed in Jupyter as **ContextNet R**. Register it once with `IRkernel::installspec(name = "contextnet_r", displayname = "ContextNet R")`. If Jupyter also shows an old raw `ir` kernel for the same environment, remove the confusing entry with `jupyter kernelspec remove ir -f` after confirming that `contextnet_r` works.
 

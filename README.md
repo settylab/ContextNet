@@ -18,7 +18,62 @@ The framework has three components:
 
 ## Installation
 
-The recommended path is the bundled micromamba environment. It installs R, compiled system libraries, CRAN packages, Bioconductor packages, Jupyter, and IRkernel from conda-forge/bioconda where possible, then uses `inst/bootstrap.R` for GitHub-only R packages.
+ContextNet can be installed from a regular R or RStudio session, or from the bundled micromamba environment. The direct R/RStudio path is appropriate when R and system libraries are already managed locally. The micromamba path is appropriate when a reproducible Jupyter/R Markdown environment is needed or when source builds of compiled R packages are difficult on the local machine.
+
+### Direct R/RStudio Installation
+
+Start in the R version that RStudio will use. In RStudio, confirm this with:
+
+```r
+R.version.string
+R.home("bin")
+.libPaths()
+```
+
+ContextNet requires R 4.1 or newer. On Linux or macOS, source installation may also require development libraries for HDF5, NLopt, curl, SSL, XML, Cairo, and a C/C++/Fortran toolchain. If these system libraries are not available, use the micromamba installation path below because it provides pre-built binaries for the common compiled dependencies.
+
+Install the R package installers and the packages needed for the ContextNet tutorials:
+
+```r
+install.packages(
+    c("remotes", "BiocManager", "Seurat", "ggplot2", "htmlwidgets", "IRdisplay", "knitr", "rmarkdown"),
+    repos = "https://cloud.r-project.org"
+)
+```
+
+Install the NicheNet packages used by ContextNet workflows. `nichenetr` is required for network integration and ligand-activity analysis. `multinichenetr` and its Bioconductor dependencies are required for the multi-condition workflow in Tutorial 03.
+
+```r
+BiocManager::install(c("muscat", "scater", "sva", "scran"), ask = FALSE, update = FALSE)
+
+remotes::install_github("saeyslab/nichenetr", upgrade = "never")
+remotes::install_github("saeyslab/multinichenetr", upgrade = "never")
+```
+
+Install ContextNet. From an R session with internet access, install from GitHub:
+
+```r
+remotes::install_github("settylab/ContextNet", dependencies = NA, upgrade = "never")
+```
+
+From a downloaded or cloned ContextNet source checkout, install the local source instead:
+
+```r
+remotes::install_local(".", dependencies = NA, upgrade = "never")
+```
+
+Optional packages can be installed after the core package works. `presto` speeds up some Seurat differential-expression steps. `ccflowR` renders Sankey/river plots that show sender -> ligand -> receptor -> receiver communication paths; core ContextNet analysis does not require it.
+
+```r
+remotes::install_github("immunogenomics/presto", upgrade = "never")
+remotes::install_github("settylab/ccflowR", upgrade = "never")
+```
+
+RStudio users can then open the companion `.Rmd` files in `notebooks/` and run chunks interactively. No Jupyter kernel registration is needed for RStudio. If packages were installed in a terminal R but are not visible in RStudio, configure RStudio to use the same R shown by `R.home("bin")`, then restart RStudio and rerun `library(ContextNet)`.
+
+### Reproducible Micromamba/Jupyter Installation
+
+The bundled micromamba environment installs R, compiled system libraries, CRAN packages, Bioconductor packages, Jupyter, and IRkernel from conda-forge/bioconda where possible, then uses `inst/bootstrap.R` for GitHub-only R packages.
 
 ```bash
 # 1. Create the conda environment
@@ -33,7 +88,7 @@ micromamba run -n contextnet R -e "IRkernel::installspec(name = 'contextnet_r', 
 
 The bootstrap installs required GitHub packages such as `nichenetr` and `multinichenetr`, then installs ContextNet from the source checkout. Core ContextNet installation does not require a GitHub token.
 
-`ccflowR` is optional visualization support for Sankey/river plots. It turns ContextNet result tables into path-level diagrams that connect sender cell type, ligand, receptor, and receiver cell type. This is useful when ranked ligand tables are too dense and the strongest cell-cell communication routes need to be inspected. Install it into the same R environment with:
+`ccflowR` is optional visualization support for Sankey/river plots. Install it into the same R environment with:
 
 ```bash
 micromamba run -n contextnet R -e "remotes::install_github('settylab/ccflowR', upgrade = 'never')"
@@ -45,38 +100,31 @@ or opt in during bootstrap:
 INSTALL_CCFLOWR=true micromamba run -n contextnet Rscript inst/bootstrap.R
 ```
 
-If `ccflowR` is not installed, ContextNet still installs and the core analyses run; only Sankey/river plot cells are unavailable. The commands above are the recommended installation path; detailed environment troubleshooting is available in the [installation notes](vignettes/installation-micromamba.md).
+If `ccflowR` is not installed, ContextNet still installs and the core analyses run; only Sankey/river plot cells are unavailable. Detailed micromamba troubleshooting is available in the [installation notes](vignettes/installation-micromamba.md).
 
-### Lightweight install
-
-For an existing R toolchain where only ContextNet core functionality is needed, install with hard dependencies first. Avoid `dependencies = TRUE` unless optional packages such as `ccflowR`, `Seurat`, and the full MultiNicheNet stack are already available.
-
-```r
-# In an R session with remotes installed
-remotes::install_github("settylab/ContextNet", dependencies = NA)
-
-# Optional Sankey/river-plot support
-remotes::install_github("settylab/ccflowR", upgrade = "never")
-```
-
-### Verify installation
+### Verify Installation
 
 ```r
 library(ContextNet)
 check_ecosystem(verbose = TRUE)
 ```
 
+A successful core installation should report `ContextNet` and `nichenetr` as available. `multinichenetr`, `Seurat`, and `ccflowR` are reported separately because they are needed only for specific workflows or optional visualization.
+
 For a fast functional test, run Tutorial 01. It uses the small example dataset included with the package at `inst/extdata/contextnet_smoke/`, so no external HNSCC data are required for the first check.
 
-### Known installation issues
+### Known Installation Issues
 
 | Symptom | Cause / Fix |
 |---|---|
+| RStudio cannot find `ContextNet` after a terminal install | RStudio is using a different R or library path. Compare `R.home("bin")` and `.libPaths()` in both sessions, then configure RStudio to use the R where ContextNet was installed. |
+| `nichenetr` is missing during network integration | Install it with `remotes::install_github("saeyslab/nichenetr", upgrade = "never")` in the same R used by ContextNet. |
+| `multinichenetr` or Bioconductor packages fail during Tutorial 03 | Install `muscat`, `scater`, `sva`, and `scran` with `BiocManager::install()`, then install `multinichenetr` from GitHub. |
 | `ccflowR` is not available | ContextNet core analysis does not require it. Install it from [settylab/ccflowR](https://github.com/settylab/ccflowR), then rerun only the Sankey/river plot cells. |
 | Jupyter shows a raw `ir` kernel name | Register the intended kernel with `IRkernel::installspec(name = 'contextnet_r', displayname = 'ContextNet R')`. If an old `ir` kernelspec points to the same env and causes confusion, remove it with `jupyter kernelspec remove ir -f`. |
-| `nloptr` fails to compile from source | Use the micromamba env, which ships `nlopt` and `r-nloptr` pre-built. Outside the env, install system `nlopt` first. |
-| `hdf5r` configure: `hdf5 does not seem to be installed` | Use the micromamba env, which ships `r-hdf5r` with HDF5. Outside the env, install the platform HDF5 development libraries. |
-| `failed to lock directory` after a killed install | Remove stale `00LOCK-*` directories or re-run `Rscript inst/bootstrap.R`, which clears them. |
+| `nloptr` fails to compile from source | Install the system `nlopt` development library or use the micromamba env, which ships `nlopt` and `r-nloptr` pre-built. |
+| `hdf5r` configure: `hdf5 does not seem to be installed` | Install the platform HDF5 development libraries or use the micromamba env, which ships `r-hdf5r` with HDF5. |
+| `failed to lock directory` after a killed install | Remove stale `00LOCK-*` directories from the first `.libPaths()` entry, then rerun the install command. |
 | `repo.anaconda.com` unreachable | The shipped `environment.yml` uses only `conda-forge` and `bioconda`. If global conda config adds defaults, pass `--override-channels`. |
 | macOS: "Operation not permitted" on the working tree | Clear extended attributes with `xattr -cr /path/to/ContextNet`. |
 
