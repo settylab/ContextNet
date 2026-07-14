@@ -88,6 +88,12 @@ dependencies:
   # Jupyter support for R notebooks
   - jupyter
   - r-irkernel
+  - python>=3.10
+  - pip
+  - r-reticulate
+  # ccflowR::sankey_save() uses Plotly static export for PNG previews.
+  - pip:
+      - "kaleido<1.0"
 
   # ----------------------------------------------------------------------------
   # GitHub-only packages (NOT in conda-forge or bioconda)

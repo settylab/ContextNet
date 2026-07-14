@@ -1,34 +1,34 @@
 # ContextNet Tutorials
 
-ContextNet extends NicheNet by replacing the generic gene regulatory network with a context-specific gene regulatory network (GRN). Use ContextNet when you have a regulatory network inferred from your own single-cell or multiomic system and want ligand-target predictions to reflect that context rather than a generic prior. The tutorials are organized around reader questions: what input is needed, what biological question is being asked, what object is produced, and how to interpret the output.
+ContextNet is an R package for context-aware cell-cell communication analysis. It uses a gene regulatory network (GRN) inferred from sc-multiomic data to adapt NicheNet-style ligand-target prediction to the biological context being analyzed. Instead of relying only on a generic regulatory prior, ContextNet asks which sender ligands can explain receiver gene programs through regulatory relationships measured in the study. The tutorials start with installation and object checks, then move to HNSCC sc-multiome analyses that rank ligand activities, identify target genes supporting those activities, and visualize sender-ligand-receptor-receiver flows with ccflowR.
 
 ## Tutorial Map
 
-| Tutorial | Biological or training question | Data mode | Main output | Use when |
-|----------|---------------------------------|-----------|-------------|----------|
-| [01 Getting Started](01-getting-started.ipynb) / [Rmd](01-getting-started.Rmd) | Does my installation work, and what do ContextNet inputs and outputs look like? | Packaged synthetic smoke-test fixture | `ContextGRN`, `ContextNetwork`, `ContextResult`, expected plots | You are learning the object model or checking an install |
-| [02 Standard Workflow](02-standard-workflow.ipynb) / [Rmd](02-standard-workflow.Rmd) | Which sender ligands may explain basal, parabasal, suprabasal, and dividing receiver states within contralateral tissue? | Full local Seurat + context-specific GRN | receiver-specific ligand activity, target heatmaps, ccflowR Sankey river paths | You want a single-tissue ContextNet analysis across epithelial receiver states |
-| [03 Multi-Condition Workflow](03-multicondition-workflow.ipynb) / [Rmd](03-multicondition-workflow.Rmd) | Which communication programs change reproducibly across samples? | Full local replicate-aware MultiNicheNet analysis | prioritization table, abundance information, ccflowR Sankey paths | You have biological replicates and need sample-aware inference |
+| Tutorial | Question addressed | Data mode | Main output | Suitable use |
+|----------|--------------------|-----------|-------------|--------------|
+| [01 Getting Started](01-getting-started.ipynb) / [Rmd](01-getting-started.Rmd) | Does ContextNet load correctly, and what do the core inputs and outputs contain? | Included example dataset | `ContextGRN`, `ContextNetwork`, `ContextResult`, expected plots | Installation checks and object-model orientation |
+| [02 Standard Workflow](02-standard-workflow.ipynb) / [Rmd](02-standard-workflow.Rmd) | Which communication programs may explain receiver cell states within one tissue context? | HNSCC contralateral sc-multiome | ligand activity ranking, targets explaining ligand activity, and sender-ligand-receptor-receiver communication flow with ccflowR | Find ligand activities that explain receiver cell states |
+| [03 Multi-Condition Workflow](03-multicondition-workflow.ipynb) / [Rmd](03-multicondition-workflow.Rmd) | Which communication programs change within the same cell type across biological conditions? | HNSCC contralateral sc-multiome (condition 1) and normal-adjacent sc-multiome (condition 2) | condition-associated communication changes and cell-cell communication flow with ccflowR | Differential cell-cell communication analysis across conditions |
 
 RStudio users can open the companion `.Rmd` files in this directory. They contain the same source cells as the notebooks and are meant for interactive execution, not package build-time vignettes.
 
 ## Running the Tutorials
 
-- **Installation.** Install ContextNet first using the repository `README.md` or the micromamba guide. The tutorials do not install packages; they start from biological or training questions and use setup cells only to load libraries and local data.
+- **Installation.** Complete package setup with the repository [installation instructions](../README.md#installation). The README includes a direct R/RStudio installation path and a micromamba/Jupyter path. The tutorials do not install packages; setup cells only load libraries and data.
 
 - **Kernel.** The notebooks use an R kernel named `contextnet_r`, displayed in Jupyter as **ContextNet R**. Register it once with `IRkernel::installspec(name = "contextnet_r", displayname = "ContextNet R")`. If Jupyter also shows an old raw `ir` kernel for the same environment, remove the confusing entry with `jupyter kernelspec remove ir -f` after confirming that `contextnet_r` works.
 
 - **Working directory.** Run a notebook from the repository root or from the `notebooks/` directory. The setup cell normalizes the working directory to the repository root.
 
-- **ccflowR river plots.** ccflowR is optional visualization support for Sankey/river plots. It helps visualize high-priority sender -> ligand -> receptor -> receiver paths after ContextNet or MultiNicheNet has ranked communication hypotheses. Install it into the same **ContextNet R** environment once the public `settylab/ccflowR` repository is available. Without ccflowR, core ContextNet analyses still run, but Sankey/river plot cells should be skipped.
+- **ccflowR river plots.** [ccflowR](https://github.com/settylab/ccflowR) is optional visualization support for Sankey/river plots. It helps visualize high-priority sender -> ligand -> receptor -> receiver paths after ContextNet has prioritized communication hypotheses. Install it into the same **ContextNet R** environment with `remotes::install_github("settylab/ccflowR", upgrade = "never")`. Notebook PNG previews are generated by `ccflowR::sankey_save()` and require Kaleido (`kaleido<1.0`) or `webshot2`; the provided `environment.yml` installs Kaleido. Without ccflowR, core ContextNet analyses still run, but Sankey/river plot cells should be skipped. See the [ccflowR documentation](https://github.com/settylab/ccflowR#readme) for plotting-specific options.
 
-- **Outputs and figures.** Tutorial 01 is committed with outputs from the packaged smoke-test fixture. Tutorials 02 and 03 are committed with current executed outputs from the local HNSCC reference analyses so readers can see the expected tables and figures. Re-run notebooks whenever inputs, package versions, or plotting code change.
+- **Outputs and figures.** Tutorial 01 is committed with outputs from the included example dataset. Tutorials 02 and 03 are committed with current executed outputs from the HNSCC tutorial analyses so the expected tables and figures are visible. Re-run notebooks whenever inputs, package versions, or plotting code change.
 
 ## Data Requirements
 
-Tutorial 01 uses only the packaged public fixture under `inst/extdata/contextnet_smoke/`. It is synthetic and exists only to test installation and object interpretation.
+Tutorial 01 uses the small example dataset included with the package at `inst/extdata/contextnet_smoke/`. It is synthetic and is intended for installation checks and object interpretation.
 
-Tutorials 02 and 03 are full local-data tutorials. To run them as written you need, under `data/` or through the documented environment variables:
+Tutorials 02 and 03 use HNSCC tutorial data. Download the data from the [ContextNet tutorial data release](https://github.com/settylab/ContextNet/releases), place the files under `data/`, or set the documented environment variables before running the notebooks.
 
 | Input | File used by the tutorials | Purpose |
 |-------|----------------------------|---------|
@@ -38,7 +38,7 @@ Tutorials 02 and 03 are full local-data tutorials. To run them as written you ne
 | NicheNet weighted prior | `weighted_networks_nsga2r_final.rds` | signaling and regulatory priors for propagation |
 | NicheNet L-T matrix (optional) | `ligand_target_matrix_nsga2r_final.rds` | reference only; not used by ContextNet integration |
 
-The NicheNet priors are distributed with the official NicheNet v2 tutorials and can be fetched once with `load_nichenet_data(cache_dir = "data", version = "v2")`. The full HNSCC Seurat object is not bundled because it is large and study-specific.
+The NicheNet priors are distributed with the official [NicheNet v2 tutorials](https://github.com/saeyslab/nichenetr) and can be fetched once with `load_nichenet_data(cache_dir = "data", version = "v2")`. The HNSCC Seurat object and saved MultiNicheNet result are provided as tutorial data rather than bundled inside the R package.
 
 ## How to Interpret the Object Model
 
@@ -46,32 +46,35 @@ ContextNet separates the analysis into three object classes:
 
 - `ContextGRN`: regulatory evidence from the profiled biological context. It stores transcription-factor to target-gene edges imported from a GRN inference workflow.
 - `ContextNetwork`: reusable propagated signaling model. It stores the context-specific ligand-target matrix created by integrating the GRN with NicheNet priors.
-- `ContextResult`: answer to one biological question. It stores ranked ligands, target genes, ligand-target links, and the parameters defining sender, receiver, contrast, and thresholds.
+- `ContextResult`: result for one sender/receiver analysis. It stores ranked ligands, target genes, ligand-target links, and the parameters defining sender cells, receiver cells, contrasts, and thresholds.
 
-Use accessor functions to extract ordinary R objects:
+Accessor functions extract ordinary R objects for inspection, plotting, and export. Tutorial 01 explains these objects with printed output in the [object model summary](01-getting-started.ipynb#Object-Model-Summary).
 
 ```r
-edges(grn)
-tfs(grn)
-targets(grn)
-regulons(grn)
+# ContextGRN accessors: inspect the imported regulatory network.
+edges(grn)       # transcription-factor -> target-gene regulatory edge table
+tfs(grn)         # transcription factors represented in the GRN
+targets(grn)     # target genes represented in the GRN
+regulons(grn)    # target genes grouped by transcription factor
 
-ligand_target_matrix(network)
-ligands(network)
-integration_params(network)
+# ContextNetwork accessors: inspect the integrated ligand-target model.
+ligand_target_matrix(network)  # target-gene x ligand regulatory-potential matrix
+ligands(network)               # ligands retained after network integration
+integration_params(network)    # integration mode and propagation settings
 
-ligand_activities(result)
-top_ligands(result)
-top_targets(result)
-ligand_target_links(result)
-parameters(result)
-as.data.frame(result)
-provenance(result)
+# ContextResult accessors: inspect one ligand-activity analysis.
+ligand_activities(result)      # ranked ligand activity scores
+top_ligands(result)            # highest-ranked ligands retained for review
+top_targets(result)            # receiver target genes used for interpretation
+ligand_target_links(result)    # ligand-target links supporting the ranking
+parameters(result)             # sender, receiver, contrast, and threshold settings
+as.data.frame(result)          # flat export table for downstream analysis
+provenance(result)             # package and runtime provenance for reproducibility
 ```
 
 ## ccflowR in the Tutorials
 
-ccflowR is used after ligand prioritization to visualize path-level hypotheses. A ccflowR path should be read as a prioritized model-supported route from sender to receiver. It is not direct proof of secretion, receptor binding, spatial contact, or causality. The strongest interpretation comes when the same path is supported by ligand expression, receptor expression, target-gene changes, regulatory potential, abundance information, and external biological evidence.
+ccflowR is used after ligand prioritization to visualize path-level hypotheses. A ccflowR path should be read as a prioritized model-supported route from sender to receiver. It is not direct proof of secretion, receptor binding, spatial contact, or causality. The strongest interpretation comes when the same path is supported by ligand expression, receptor expression, target-gene changes, regulatory-potential scores, abundance information, and external biological evidence. See the [ccflowR documentation](https://github.com/settylab/ccflowR#readme) for additional plotting examples.
 
 ## Troubleshooting
 
@@ -83,4 +86,5 @@ ccflowR is used after ligand prioritization to visualize path-level hypotheses. 
 | Tiny receiver gene set or unstable ranking | DE contrast yields too few genes | Loosen thresholds or pass a curated `geneset_oi` |
 | No receptors for top ligands | Receptors are not expressed in the receiver or absent from the prior | Check receptor expression and the NicheNet prior version |
 | ccflowR Sankey is empty | Threshold too strict | Lower `threshold_quantile` in `combine_sankey_data()` |
+| ccflowR Sankey PNG preview is blank or missing | Kaleido or webshot2 is not available for static export | Install `kaleido<1.0` in the Python environment used by `reticulate` or install `webshot2`, then rerun the Sankey cell |
 | MultiNicheNet FORK/socket errors | Parallel backend issue | Set `n_cores = 1` |

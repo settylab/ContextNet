@@ -2,7 +2,7 @@
 #'
 #' @description
 #' Functions for importing gene regulatory networks from various sources
-#' including the contextnet-pipeline, SCENIC+, Pando, and table formats.
+#' including the context_specific_grn, SCENIC+, Pando, and table formats.
 #'
 #' @importFrom utils read.csv
 #' @importFrom rlang .data
@@ -57,7 +57,7 @@ import_grn <- function(x, format = "auto", ...) {
 #' Import GRN from gene x TF matrix (CSV format)
 #'
 #' @description Import a GRN from a gene x TF matrix stored as CSV.
-#'   This is the format produced by the contextnet-pipeline.
+#'   This is the format produced by the context_specific_grn.
 #'   The matrix has genes as rows and TFs as columns, with regulatory
 #'   weights as values.
 #'
@@ -87,7 +87,7 @@ import_grn_pipeline <- function(path,
     if (!file.exists(path)) {
         cli::cli_abort(c(
             "File not found: {.path {path}}",
-            "i" = "Expected a gene_x_tf.csv file from contextnet-pipeline"
+            "i" = "Expected a gene_x_tf.csv file from context_specific_grn"
         ))
     }
 
@@ -186,7 +186,7 @@ import_grn_pipeline <- function(path,
             min_weight = min_weight
         ),
         provenance = .init_provenance(
-            source = "contextnet-pipeline",
+            source = "context_specific_grn",
             source_version = NA_character_
         )
     )

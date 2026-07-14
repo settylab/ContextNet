@@ -11,9 +11,9 @@
 # version. Re-run safely after upgrading any single dependency.
 #
 # ccflowR is optional Sankey/river-plot visualization support. The bootstrap
-# does not require it for a successful ContextNet install. Once ccflowR is
-# publicly accessible, install it by setting INSTALL_CCFLOWR=true before
-# running this script, or install it manually with remotes::install_github().
+# does not require it for a successful ContextNet install. Install it by
+# setting INSTALL_CCFLOWR=true before running this script, or install it
+# manually with remotes::install_github().
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -141,7 +141,7 @@ if (tolower(Sys.getenv("INSTALL_CCFLOWR", unset = "false")) %in% c("1", "true", 
         FALSE
     })
 } else {
-    msg("Optional: skipping ccflowR install. Set INSTALL_CCFLOWR=true once ccflowR is public if you want Sankey river plots.")
+    msg("Optional: skipping ccflowR install. Set INSTALL_CCFLOWR=true if you want Sankey river plots.")
 }
 
 # ── Step 4: install ContextNet itself ─────────────────────────────────────────

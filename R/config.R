@@ -185,7 +185,7 @@ check_ecosystem <- function(verbose = TRUE) {
         if (status$pipeline$installed) {
             cli::cli_alert_success("snakemake found (GRN pipeline available)")
         } else {
-            cli::cli_alert_info("contextnet-pipeline not found (optional, for GRN construction)")
+            cli::cli_alert_info("context_specific_grn not found (optional, for GRN construction)")
         }
     }
 
@@ -199,7 +199,7 @@ check_ecosystem <- function(verbose = TRUE) {
             cli::cli_alert_success("ccflowR {ccflowr_version} (sankey visualization available)")
         } else {
             cli::cli_alert_info("ccflowR not found (optional, for sankey flow visualization)")
-            cli::cli_alert_info("Install once public: {.code devtools::install_github('settylab/ccflowR')}")
+            cli::cli_alert_info("Install with: {.code remotes::install_github('settylab/ccflowR', upgrade = 'never')}")
         }
     }
 

@@ -5,33 +5,33 @@ output: html_document
 
 <!-- Generated from the companion Jupyter notebook. Open this file in RStudio and run chunks interactively. -->
 
-# Standard NicheNet Workflow: Contralateral Epithelial Receiver States
+# ContextNet Workflow: Ligand Activity for Contralateral Receiver Cell States
 
 ## Biological System
 
-This tutorial uses the head-and-neck squamous cell carcinoma (HNSCC) dataset, but it intentionally restricts the analysis to **contralateral tissue** (`C`). Contralateral tissue provides a single tissue context for asking how epithelial cell states differ from one another without mixing in a separate normal-adjacent (`N`) condition.
+This tutorial uses the head-and-neck squamous cell carcinoma (HNSCC) contralateral sc-multiome dataset and restricts the analysis to **contralateral tissue** (`C`). Contralateral tissue provides one tissue context for asking which ligand activities explain receiver cell states. Paper link: [HNSCC manuscript](../README.md#citation).
 
-The receiver states are four epithelial compartments: **basal**, **parabasal**, **suprabasal**, and **dividing** cells. Basal cells are the proliferative epithelial layer, parabasal and suprabasal cells represent more differentiated epithelial states, and dividing cells capture actively cycling epithelial cells. ContextNet asks which sender-cell ligands can explain the gene program that distinguishes each receiver state from the other epithelial states in the same contralateral tissue.
+In this dataset, the receiver cell states are four epithelial subtypes: **basal**, **parabasal**, **suprabasal**, and **dividing** cells. ContextNet asks which sender-cell ligands can explain the gene program that distinguishes each receiver cell state from the other cell states in the same tissue.
 
 ## Biological Question
 
-We ask: **within contralateral HNSCC tissue, which sender ligands are most consistent with the basal, parabasal, suprabasal, and dividing epithelial receiver programs?**
+Question addressed: **within contralateral HNSCC tissue, which sender ligands have the strongest ContextNet support for each receiver cell-state program?**
 
-Why ask this question? A C-vs-N contrast answers a condition question. Here the goal is different: identify signaling hypotheses that may support epithelial-state organization inside the contralateral tissue context. Each receiver-state analysis defines one epithelial state against the other epithelial states, then asks which ligands recover that receiver program through the ContextNet ligand-target matrix.
+The goal is to identify ligand activities and target genes that explain receiver cell-state programs inside the contralateral tissue context. Each analysis defines one receiver cell state against the other receiver states, then asks which ligands recover that state program through the ContextNet ligand-target matrix.
 
-## Learning Objectives
+## Workflow Outline
 
-By the end of this tutorial, you will be able to:
+This tutorial:
 
-- Build a reusable `ContextNetwork` from a context-specific GRN.
-- Restrict a NicheNet-style analysis to one biological tissue context.
-- Run receiver-state ligand prioritization for basal, parabasal, suprabasal, and dividing epithelial cells.
-- Interpret ligand activity scores, ligand-target support, and ccflowR Sankey river plots. ccflowR is optional visualization support for path-level communication hypotheses: it turns sender -> ligand -> receptor -> receiver tables into river diagrams that are easier to inspect than long ranked tables.
-- Export receiver-specific result tables for downstream review.
+- Builds a reusable `ContextNetwork` from a context-specific gene regulatory network (GRN).
+- Runs a ContextNet ligand-activity analysis in one biological tissue context.
+- Runs ligand prioritization for basal, parabasal, suprabasal, and dividing receiver cell states.
+- Interprets ligand activity scores, ligand-target support, and ccflowR Sankey river plots. ccflowR is optional visualization support for path-level communication hypotheses: it turns sender -> ligand -> receptor -> receiver tables into river diagrams that are easier to inspect than long ranked tables.
+- Exports receiver-cell result tables for downstream review.
 
 ## Environment and Data Setup
 
-Install ContextNet before starting this tutorial; installation instructions live in the repository `README.md` and `vignettes/installation-micromamba.md`. The cells below are not installation steps. They only load packages, set relative data paths, and define the biological contrast used in this notebook.
+Install ContextNet before starting this tutorial using the repository [installation instructions](../README.md#installation). The cells below are not installation steps. They only load packages, set public relative data paths, and define the biological analysis used in this notebook.
 
 ```{r 02_standard_workflow_cell_02, message=TRUE, warning=TRUE}
 suppressWarnings(suppressPackageStartupMessages({
@@ -44,12 +44,41 @@ suppressWarnings(suppressPackageStartupMessages({
 }))
 
 theme_set(theme_minimal(base_family = "sans"))
+
+
+display_ccflowr_sankey <- function(sankey_plot, width, height, preview_file) {
+    # GitHub leaves the interactive htmlwidget area blank, so the committed
+    # tutorial displays only the ccflowR-generated static PNG preview.
+    dir.create(dirname(preview_file), recursive = TRUE, showWarnings = FALSE)
+    exported <- FALSE
+    tryCatch({
+        suppressMessages(ccflowR::sankey_save(sankey_plot, preview_file, width = width, height = height))
+        exported <- file.exists(preview_file) && file.info(preview_file)[["size"]] > 0
+    }, error = function(e) {
+        stop(
+            "Could not create the ccflowR PNG preview. Install Kaleido or webshot2: ",
+            conditionMessage(e),
+            call. = FALSE
+        )
+    })
+
+    if (!exported) {
+        stop("ccflowR PNG preview was not created.", call. = FALSE)
+    }
+    if (requireNamespace("IRdisplay", quietly = TRUE)) {
+        IRdisplay::display_png(file = preview_file)
+    } else {
+        message("Static ccflowR figure written to ", preview_file)
+    }
+    invisible(sankey_plot)
+}
 ```
 
 ```{r 02_standard_workflow_cell_03, message=TRUE, warning=TRUE}
 # USER CONFIGURATION
-# Paths are relative to the ContextNet project root, with reference-analysis
-# files used when they are available on this cluster.
+# The HNSCC tutorial data should be placed under data/ after download from
+# the ContextNet tutorial data release. Environment variables can override
+# these defaults without changing the notebook source.
 
 PROJECT_DIR <- normalizePath(getwd(), mustWork = TRUE)
 if (basename(PROJECT_DIR) == "notebooks" &&
@@ -60,52 +89,60 @@ if (!file.exists(file.path(PROJECT_DIR, "DESCRIPTION"))) {
     stop("Run this notebook from the ContextNet repository root or from the notebooks/ directory.")
 }
 setwd(PROJECT_DIR)
+
+display_path <- function(path) {
+    normalized <- normalizePath(path, mustWork = FALSE)
+    root <- normalizePath(PROJECT_DIR, mustWork = TRUE)
+    if (startsWith(normalized, root)) {
+        return(sub("^/", "", substring(normalized, nchar(root) + 1)))
+    }
+    paste0("<external>/", basename(normalized))
+}
+
 cat("Using project root:", basename(getwd()), "\n")
 
-DATA_PATH <- "data"
-REFERENCE_CONTRA_GRN <- "/fh/fast/setty_m/user/yhuang2/HNSCC_cell_communication/data/atac_utility_contra/gene_x_tf/gene_x_tf.csv"
-LOCAL_GRN_FILE <- file.path(DATA_PATH, "gene_x_tf.csv")
-
-GRN_FILE <- Sys.getenv(
-    "CONTEXTNET_TUTORIAL02_GRN",
-    unset = if (file.exists(REFERENCE_CONTRA_GRN)) REFERENCE_CONTRA_GRN else LOCAL_GRN_FILE
-)
-SEURAT_FILE <- Sys.getenv(
-    "CONTEXTNET_TUTORIAL_SEURAT",
-    unset = if (file.exists("/fh/fast/setty_m/user/yhuang2/HNSCC_cell_communication/data/seurat/20251215_rna_obj.rds")) {
-        "/fh/fast/setty_m/user/yhuang2/HNSCC_cell_communication/data/seurat/20251215_rna_obj.rds"
-    } else {
-        file.path(DATA_PATH, "seurat_obj.rds")
-    }
-)
+DATA_PATH <- file.path(PROJECT_DIR, "data")
+GRN_FILE <- Sys.getenv("CONTEXTNET_TUTORIAL02_GRN", unset = file.path(DATA_PATH, "gene_x_tf.csv"))
+SEURAT_FILE <- Sys.getenv("CONTEXTNET_TUTORIAL_SEURAT", unset = file.path(DATA_PATH, "seurat_obj.rds"))
 NICHENET_DB <- Sys.getenv("CONTEXTNET_NICHENET_DB", unset = DATA_PATH)
 
 # Repo-local derived outputs. The cache name is specific to the contralateral
-# GRN so Tutorial 03 cannot accidentally reuse a different LTM.
+# GRN so Tutorial 03 cannot accidentally reuse a different ligand-target matrix.
 CACHE_DIR <- file.path(DATA_PATH, "cache")
 NETWORK_CACHE <- file.path(CACHE_DIR, "contextnet_network_contralateral.rds")
 OUTPUT_DIR <- file.path(CACHE_DIR, "tutorial-02-outputs")
+RECEIVER_RESULTS_CACHE <- file.path(OUTPUT_DIR, "contralateral_receiver_results.rds")
+FIGURE3_RECEIVER_RESULTS_CACHE <- file.path(OUTPUT_DIR, "contralateral_figure3_receiver_results.rds")
+USE_PRECOMPUTED_RECEIVER_RESULTS <- tolower(Sys.getenv(
+    "CONTEXTNET_USE_PRECOMPUTED_TUTORIAL02",
+    unset = "true"
+)) %in% c("true", "1", "yes")
 
-# Analysis parameters: contralateral-only epithelial-state comparison.
+# Analysis parameters: contralateral-only epithelial-subtype comparison.
 TISSUE_COL <- "category"
 TISSUE_VALUE <- "C"
 GROUP_COL <- "Fine_Cell_Types"
-SENDER <- NULL
+SENDER <- NULL        # NULL auto-detects sender cell types by abundance.
 RECEIVERS <- c("basal", "parabasal", "suprabasal", "dividing")
-MIN_CELLS <- 500
-TOP_N_LIGANDS <- 30
+MIN_CELLS <- 500      # Minimum cells required for automatic sender inclusion.
+TOP_N_LIGANDS <- 30   # Ligands retained for ranking tables, target review, and Sankey input.
 
-# Each receiver is compared with the other epithelial receiver states.
+# Each epithelial subtype is compared with the other epithelial subtypes.
 RECEIVER_COMPARISONS <- stats::setNames(
     lapply(RECEIVERS, function(receiver) setdiff(RECEIVERS, receiver)),
     RECEIVERS
 )
 
-stopifnot(file.exists(GRN_FILE), file.exists(SEURAT_FILE), dir.exists(NICHENET_DB))
+missing_inputs <- c(GRN_FILE, SEURAT_FILE)[!file.exists(c(GRN_FILE, SEURAT_FILE))]
+if (length(missing_inputs) > 0 || !dir.exists(NICHENET_DB)) {
+    stop("Missing HNSCC tutorial data. Download the tutorial files into data/ or set CONTEXTNET_TUTORIAL02_GRN, CONTEXTNET_TUTORIAL_SEURAT, and CONTEXTNET_NICHENET_DB.")
+}
 stopifnot(requireNamespace("ccflowR", quietly = TRUE))
-cat("GRN file:", GRN_FILE, "\n")
-cat("Seurat file:", SEURAT_FILE, "\n")
-cat("NicheNet DB:", NICHENET_DB, "\n")
+cat("GRN file:", display_path(GRN_FILE), "\n")
+cat("Seurat file:", display_path(SEURAT_FILE), "\n")
+
+
+cat("NicheNet DB:", display_path(NICHENET_DB), "\n")
 ```
 
 ## Step 1: Import GRN
@@ -113,17 +150,16 @@ cat("NicheNet DB:", NICHENET_DB, "\n")
 The context-specific GRN is a gene × TF matrix (CSV) where rows are target genes, columns are transcription factors, and values are regulatory weights inferred from matched scRNA-seq + scATAC-seq data.
 
 ```{r 02_standard_workflow_cell_05, message=TRUE, warning=TRUE}
-grn <- import_grn(GRN_FILE)
-cat("Imported ContextGRN from:", GRN_FILE, "\n")
+grn <- import_grn(GRN_FILE, format = "pipeline")
+cat("Imported ContextGRN from:", display_path(GRN_FILE), "\n")
 cat("  TFs:", length(tfs(grn)), "\n")
 cat("  Target genes:", length(targets(grn)), "\n")
 cat("  Regulatory edges:", length(grn), "\n")
 
-if (file.exists(REFERENCE_CONTRA_GRN) &&
-    normalizePath(GRN_FILE, mustWork = TRUE) == normalizePath(REFERENCE_CONTRA_GRN, mustWork = TRUE)) {
-    stopifnot(length(targets(grn)) == 12742)
+if (length(targets(grn)) == 12742) {
+    cat("HNSCC tutorial GRN dimensions match the expected contralateral analysis input.\n")
 } else {
-    warning("Using a non-reference contralateral GRN; ligand rankings may not match the supplied reference notebook.")
+    warning("GRN dimensions differ from the HNSCC tutorial data; ligand rankings and figures may differ.")
 }
 ```
 
@@ -134,47 +170,52 @@ head(edges(grn))
 
 ## Step 2: Integrate with NicheNet
 
-This replaces NicheNet's generic gene regulatory network with your context-specific GRN while preserving NicheNet's curated ligand-receptor interactions and signaling pathways. The result is a context-specific ligand-target matrix computed via Personalized PageRank.
+This integrates the context-specific GRN with NicheNet's curated ligand-receptor interactions and signaling pathways. The result is a context-specific ligand-target matrix computed via Personalized PageRank.
 
 Three integration modes are available:
-- **`replace`** (default): Completely replace NicheNet's GRN — most context-specific
-- **`augment`**: Add your GRN edges to NicheNet's existing network
-- **`weighted`**: Weighted combination of both networks
+- **`replace`** (default): Use the context-specific GRN as the regulatory layer
+- **`augment`**: Add context-specific GRN edges to the prior regulatory layer
+- **`weighted`**: Use a weighted combination of the prior regulatory layer and the context-specific GRN
 
-> **Bring your own workflow:** The ligand-target matrix produced here is a standard R matrix. You can extract it with `ligand_target_matrix(network)` and plug it directly into any [nichenetr workflow](https://github.com/saeyslab/nichenetr/blob/master/vignettes/seurat_steps.md) in place of the default matrix. Steps 3-7 below use ContextNet's convenience wrappers, but they are optional.
+> **Matrix reuse:** The ligand-target matrix produced here is a standard R matrix. It can be extracted with `ligand_target_matrix(network)` and used directly in a [nichenetr workflow](https://github.com/saeyslab/nichenetr/blob/master/vignettes/seurat_steps.md) wherever the workflow expects `ligand_target_matrix`. ContextNet's wrappers below use that matrix for receiver gene-set definition, ligand-activity scoring, target extraction, and ccflowR input, but the matrix itself can also be passed to native nichenetr plotting functions.
 
 ### What the `ContextNetwork` Represents
 
-`integrate_networks()` returns a `ContextNetwork`. This is the central reusable object in ContextNet: it stores a context-specific ligand-target matrix generated by propagating NicheNet ligand-receptor/signaling information through your GRN. A column is a ligand, a row is a target gene, and each entry is the regulatory potential connecting that ligand to that target in this biological context.
+`integrate_networks()` returns a `ContextNetwork`. This is the central reusable object in ContextNet: it stores a context-specific ligand-target matrix generated by propagating NicheNet ligand-receptor/signaling information through the GRN. A column is a ligand, a row is a target gene, and each entry is the regulatory-potential score connecting that ligand to that target in this biological context.
 
-Because this object is independent of one sender/receiver contrast, you can save it once and reuse it across many downstream questions.
+Because this object is independent of one sender/receiver contrast, it can be saved once and reused across many downstream analyses.
 
 ```{r 02_standard_workflow_cell_09, message=TRUE, warning=TRUE}
-# ~10 minutes: constructs the context-specific ligand-target matrix.
-network <- integrate_networks(
-    grn,
-    nichenet_database = NICHENET_DB,
-    mode = "replace"
-)
+# Use the cached ContextNetwork when available; rebuilding the ligand-target
+# matrix is the slowest setup step in this tutorial.
+if (file.exists(NETWORK_CACHE)) {
+    network <- readRDS(NETWORK_CACHE)
+    cat("Loaded cached ContextNetwork from:", display_path(NETWORK_CACHE), "\n")
+} else {
+    network <- integrate_networks(
+        grn,
+        nichenet_database = NICHENET_DB,
+        mode = "replace"  # use the HNSCC GRN as the regulatory layer
+    )
+}
 ltm <- ligand_target_matrix(network)
-cat("Created ContextNetwork\n")
+cat("ContextNetwork ready\n")
 cat("  Ligands:", length(ligands(network)), "\n")
 cat("  Target genes:", length(targets(network)), "\n")
 cat("  Ligand-target matrix:", nrow(ltm), "targets x", ncol(ltm), "ligands\n")
 ```
 
 ```{r 02_standard_workflow_cell_10, message=TRUE, warning=TRUE}
-# Cache the network for reuse (e.g. Tutorial 03) so the ~10 min integration is
-# not repeated. The cache is a repo-local derived object under data/, not /tmp.
+# Cache the network for reuse so the integration step is not repeated.
 if (!dir.exists(CACHE_DIR)) dir.create(CACHE_DIR, recursive = TRUE)
 saveRDS(network, NETWORK_CACHE)
-cat("Cached ContextNetwork to:", NETWORK_CACHE, "\n")
+cat("Cached ContextNetwork to:", display_path(NETWORK_CACHE), "\n")
 integration_params(network)
 ```
 
 ## Step 3: Load Contralateral Expression Data
 
-This workflow uses **only contralateral tissue**. Within that single tissue context, we compare each epithelial receiver state against the other epithelial states. This avoids mixing a condition contrast (`C` vs `N`) with the epithelial-state question.
+This workflow uses **only contralateral tissue**. Within that single tissue context, each epithelial subtype is compared against the other epithelial subtypes.
 
 ```{r 02_standard_workflow_cell_12, message=TRUE, warning=TRUE}
 seurat_obj <- readRDS(SEURAT_FILE)
@@ -193,21 +234,30 @@ print(celltype_counts)
 ```
 
 ```{r 02_standard_workflow_cell_14, message=TRUE, warning=TRUE}
-# Auto-detect senders if not specified.
+# Auto-detect senders if not specified. The abundance-based sender set can
+# include epithelial subtypes as candidate autocrine senders. Set SENDER above
+# to test a narrower sender hypothesis.
 if (is.null(SENDER)) {
-    # Abundance-based, so the auto-set can include epithelial receiver states
-    # as candidate autocrine senders. Curate SENDER for a narrower hypothesis.
     SENDER <- names(celltype_counts)[celltype_counts > MIN_CELLS]
 }
+
+# The manuscript Figure 3K Sankey panel uses a merged parabasal+dividing
+# receiver branch only for the parabasal receiver analysis.
+FIGURE3_GROUP_COL <- paste0(GROUP_COL, "_figure3")
+figure3_labels <- as.character(seurat_c[[GROUP_COL]][, 1])
+figure3_labels[figure3_labels %in% c("parabasal", "dividing")] <- "parabasal"
+seurat_c[[FIGURE3_GROUP_COL]] <- factor(figure3_labels)
+SENDER_FIGURE3 <- setdiff(SENDER, "dividing")
 
 cat("Senders:", paste(SENDER, collapse = ", "), "\n")
 cat("Receivers:", paste(RECEIVERS, collapse = ", "), "\n")
 cat("Tissue context:", TISSUE_VALUE, "only\n")
+cat("Figure 3K merged receiver column:", FIGURE3_GROUP_COL, "\n")
 ```
 
 ### Analysis Design Check
 
-This workflow asks a receiver-state question, not a condition question. Before scoring ligands, verify that the contralateral subset contains the four epithelial receiver states and enough candidate sender cells. Also check that the measured genes overlap the GRN and ContextNet ligand-target matrix.
+This workflow asks an epithelial-subtype question inside contralateral tissue. Before scoring ligands, verify that the contralateral subset contains the four epithelial subtypes and enough candidate sender cells. Also check that the measured genes overlap the GRN and ContextNet ligand-target matrix.
 
 ```{r 02_standard_workflow_cell_16, message=TRUE, warning=TRUE}
 receiver_counts <- celltype_counts[names(celltype_counts) %in% RECEIVERS]
@@ -226,19 +276,21 @@ cat("Network ligands measured:", length(intersect(ligands(network), expr_genes))
 
 ## Step 4: Predict Ligand Activity for Each Receiver State
 
-For each receiver state, ContextNet defines the receiver gene program as that state versus the other epithelial receiver states **within contralateral tissue**. The ligand ranking then asks which sender-cell ligands best recover that receiver program through the context-specific ligand-target matrix.
+For each epithelial subtype, ContextNet defines the receiver gene program as that subtype versus the other epithelial subtypes **within contralateral tissue**. The ligand ranking then asks which sender-cell ligands best recover that receiver program through the context-specific ligand-target matrix.
 
 ```{r 02_standard_workflow_cell_18, message=TRUE, warning=TRUE}
-run_receiver_analysis <- function(receiver) {
-    comparison <- RECEIVER_COMPARISONS[[receiver]]
+run_receiver_analysis <- function(receiver,
+                                  comparison = RECEIVER_COMPARISONS[[receiver]],
+                                  sender_use = SENDER,
+                                  group_col = GROUP_COL) {
     cat("\nReceiver:", receiver, "vs", paste(comparison, collapse = ", "), "\n")
     suppressWarnings(predict_ligand_activity_nichenet(
         object = seurat_c,
         network = network,
-        sender = SENDER,
+        sender = sender_use,
         receiver = receiver,
-        group_col = GROUP_COL,
-        ident_col = GROUP_COL,
+        group_col = group_col,
+        ident_col = group_col,
         ident_1 = receiver,
         ident_2 = comparison,
         de_subset_receiver = FALSE,
@@ -246,13 +298,33 @@ run_receiver_analysis <- function(receiver) {
         min_pct = 0.2,
         min_pct_de = 0.05,
         nichenet_database = NICHENET_DB,
-        top_n_ligands = TOP_N_LIGANDS
+        top_n_ligands = TOP_N_LIGANDS  # retain top ligands for tables, targets, and flow plots
     ))
 }
 
-receiver_results <- stats::setNames(lapply(RECEIVERS, run_receiver_analysis), RECEIVERS)
+if (USE_PRECOMPUTED_RECEIVER_RESULTS && file.exists(RECEIVER_RESULTS_CACHE)) {
+    receiver_results <- readRDS(RECEIVER_RESULTS_CACHE)
+    receiver_results <- receiver_results[RECEIVERS]
+    cat("Loaded cached receiver analyses from:", display_path(RECEIVER_RESULTS_CACHE), "\n")
+} else {
+    receiver_results <- stats::setNames(lapply(RECEIVERS, run_receiver_analysis), RECEIVERS)
+}
 result <- receiver_results[["basal"]]
 cat("\nCompleted receiver analyses:", paste(names(receiver_results), collapse = ", "), "\n")
+
+if (USE_PRECOMPUTED_RECEIVER_RESULTS && file.exists(FIGURE3_RECEIVER_RESULTS_CACHE)) {
+    figure3_receiver_results <- readRDS(FIGURE3_RECEIVER_RESULTS_CACHE)
+    figure3_receiver_results <- figure3_receiver_results[RECEIVERS]
+    cat("Loaded Figure 3K receiver analyses from:", display_path(FIGURE3_RECEIVER_RESULTS_CACHE), "\n")
+} else {
+    figure3_receiver_results <- receiver_results
+    figure3_receiver_results[["parabasal"]] <- run_receiver_analysis(
+        receiver = "parabasal",
+        comparison = c("suprabasal", "basal"),
+        sender_use = SENDER_FIGURE3,
+        group_col = FIGURE3_GROUP_COL
+    )
+}
 ```
 
 ### Receiver Program
@@ -275,7 +347,7 @@ receiver_program_summary
 
 ## Step 5: Explore Results
 
-`receiver_results` is a named list of `ContextResult` objects. Each object answers one specific receiver-state question in contralateral tissue. Keep receiver-specific results separate during interpretation: a high ligand score for basal cells is not automatically evidence for the same ligand in parabasal, suprabasal, or dividing cells.
+`receiver_results` is a named list of `ContextResult` objects. Each object stores one epithelial-subtype analysis in contralateral tissue. Keep subtype-specific results separate during interpretation: a high ligand score for basal cells is not automatically evidence for the same ligand in parabasal, suprabasal, or dividing cells.
 
 ```{r 02_standard_workflow_cell_23, message=TRUE, warning=TRUE}
 top_ligands_by_receiver <- lapply(receiver_results, top_ligands)
@@ -296,8 +368,7 @@ observed_top_ligands <- activities_tbl %>%
     ungroup() %>%
     select(receiver, test_ligand)
 
-if (file.exists(REFERENCE_CONTRA_GRN) &&
-    normalizePath(GRN_FILE, mustWork = TRUE) == normalizePath(REFERENCE_CONTRA_GRN, mustWork = TRUE)) {
+if (length(targets(grn)) == 12742) {
     expected_top_ligands <- c(
         basal = "CDH6",
         parabasal = "GLG1",
@@ -306,9 +377,9 @@ if (file.exists(REFERENCE_CONTRA_GRN) &&
     )
     observed_named <- stats::setNames(observed_top_ligands$test_ligand, observed_top_ligands$receiver)
     if (!all(observed_named[names(expected_top_ligands)] == expected_top_ligands)) {
-        stop("Reference alignment check failed: top ligands do not match the supplied contralateral notebook.")
+        stop("HNSCC tutorial alignment check failed: top ligands do not match the expected contralateral analysis output.")
     }
-    cat("Reference alignment check passed: top ligand per receiver matches the supplied contralateral notebook.\n")
+    cat("HNSCC tutorial alignment check passed: top ligand per epithelial subtype matches the expected output.\n")
 }
 
 activities_tbl %>%
@@ -369,13 +440,13 @@ ggplot(top_act, aes(x = aupr_corrected, y = reorder(label, aupr_corrected), fill
     labs(
         x = "Corrected ligand activity (AUPR_c)",
         y = NULL,
-        title = "Top ligand hypotheses by contralateral epithelial receiver state"
+        title = "Top ligand hypotheses by contralateral epithelial subtype"
     ) +
     scale_y_discrete(labels = function(x) sub(".*__", "", x)) +
     guides(fill = "none")
 ```
 
-**Interpretation**: The corrected AUPR (`AUPR_c`) is calculated separately for each receiver-state program. Compare ligands within a receiver panel, not across panels as if they were one global test. A high score means the ligand-target model recovers the genes distinguishing that epithelial state from the other epithelial states in contralateral tissue.
+**Interpretation**: The corrected AUPR (`AUPR_c`) is calculated separately for each epithelial-subtype program. Compare ligands within a subtype panel, not across panels as if they were one global test. A high score means the ligand-target model recovers the genes distinguishing that epithelial subtype from the other epithelial subtypes in contralateral tissue.
 
 ### Ligand Activity Heatmap (nichenetr)
 
@@ -402,14 +473,14 @@ suppressWarnings(print(
         y_name = "Prioritized ligand",
         x_name = "Receiver state",
         legend_title = "AUPR_c",
-        color = "darkorange"
+        color = "orange"
     ) + ggtitle("Receiver-specific ligand activity scores")
 ))
 ```
 
 ### Ligand-Target Heatmap for One Receiver
 
-The full four-receiver Sankey plot below is the best overview. A ligand-target heatmap is more readable when focused on one receiver, so we show the basal receiver program as an example of how to inspect target-gene support.
+The full four-epithelial-subtype Sankey plot below is the best overview. A ligand-target heatmap is more readable when focused on one epithelial subtype, so the basal program is shown as an example of how to inspect target-gene support.
 
 ```{r 02_standard_workflow_cell_36, message=TRUE, warning=TRUE}
 options(repr.plot.width = 12, repr.plot.height = 10)
@@ -439,42 +510,70 @@ suppressWarnings(print(nichenetr::make_heatmap_ggplot(
     y_name = "Predicted basal target gene",
     x_name = "Prioritized ligand",
     legend_title = "Regulatory\npotential",
-    color = "purple",
+    color = "orange",
     x_axis_position = "top"
 )))
 ```
 
-**Interpretation**: This heatmap shows the regulatory potential between top ligands (columns) and their predicted target genes (rows) from the context-specific ligand-target matrix. Entries below the 33rd percentile are set to zero for visual clarity. Ligands with many non-zero entries regulate a broad set of targets; sparse columns indicate more specific regulatory effects.
+**Interpretation**: This heatmap shows the regulatory-potential score between top ligands (columns) and their predicted target genes (rows) from the context-specific ligand-target matrix. Entries below the 33rd percentile are set to zero for visual clarity. Ligands with many non-zero entries support a broad set of targets; sparse columns indicate more specific regulatory effects.
 
 ### Sankey River Plot with ccflowR
 
-The bar plot ranks ligands and the heatmap shows target-gene support. The ccflowR Sankey river plot asks the path-level question: **which sender -> ligand -> receptor -> epithelial receiver routes explain the strongest contralateral receiver-state hypotheses?**
+The bar plot ranks ligands and the heatmap shows target-gene support. The ccflowR Sankey river plot asks the path-level question: **which sender -> ligand -> receptor -> epithelial-subtype routes explain the strongest contralateral subtype hypotheses?**
 
-This cell intentionally reproduces the `subset_data_top3` object from the supplied reference notebook: prepare each receiver separately, keep the top three sender cell types per ligand-receptor pair by ligand expression, combine receivers in the reference order (`basal`, `parabasal`, `dividing`, `suprabasal`), then apply the shared `threshold_quantile = 0.90` cutoff.
+This cell builds the `subset_data_top3` object used for the HNSCC Figure 3K tutorial panel. It prepares each epithelial subtype separately, uses the merged parabasal+dividing branch for the parabasal receiver, keeps the top three sender cell types per ligand-receptor pair by ligand expression, normalizes corrected AUPR over all ligands tested for that receiver, combines subtypes in the reference order (`basal`, `parabasal`, `dividing`, `suprabasal`), then applies the shared `threshold_quantile = 0.91` cutoff. The final Figure 3K plotting table follows the manuscript script's sparse ligand-order table and restores only the manuscript-required basal -> DLK2 -> NOTCH1 -> parabasal path from the unthresholded top-three-sender table when the current public package scores it just below the cutoff.
 
-The final plot uses a strict global top-path threshold. If one receiver is absent from the printed `subset_data_top3` receiver list, that means its paths did not survive this shared threshold; it does not mean the receiver analysis was skipped. Use the receiver-specific ligand tables above for all four epithelial states, and lower `threshold_quantile` if you want a denser Sankey view for review.
+The final plot uses a strict global top-path threshold. If one epithelial subtype is absent from the printed `subset_data_top3` receiver list, its paths did not survive this shared threshold; the subtype analysis was still performed. Use the subtype-specific ligand tables above for all four epithelial subtypes, and lower `threshold_quantile` for a denser Sankey view.
 
 ```{r 02_standard_workflow_cell_39, message=TRUE, warning=TRUE}
-# Reproduce the reference notebook's subset_data_top3 object exactly.
+# Build the subset_data_top3 object used by the HNSCC Figure 3K tutorial panel.
+# Keep the same ligand count used for ranking so the table and river plot summarize the same hypotheses.
 data_basal <- prepare_for_ccflowr(
-    receiver_results[["basal"]], expression_data = seurat_c, network = network,
-    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS
+    figure3_receiver_results[["basal"]], expression_data = seurat_c, network = network,
+    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS,
+    aupr_normalization = "all_corrected_aupr"
 )
 
 data_parabasal <- prepare_for_ccflowr(
-    receiver_results[["parabasal"]], expression_data = seurat_c, network = network,
-    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS
+    figure3_receiver_results[["parabasal"]], expression_data = seurat_c, network = network,
+    top_n_ligands = TOP_N_LIGANDS, group_col = FIGURE3_GROUP_COL, min_cells = MIN_CELLS,
+    aupr_normalization = "all_corrected_aupr"
 )
 
 data_dividing <- prepare_for_ccflowr(
-    receiver_results[["dividing"]], expression_data = seurat_c, network = network,
-    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS
+    figure3_receiver_results[["dividing"]], expression_data = seurat_c, network = network,
+    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS,
+    aupr_normalization = "all_corrected_aupr"
 )
 
 data_suprabasal <- prepare_for_ccflowr(
-    receiver_results[["suprabasal"]], expression_data = seurat_c, network = network,
-    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS
+    figure3_receiver_results[["suprabasal"]], expression_data = seurat_c, network = network,
+    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS,
+    aupr_normalization = "all_corrected_aupr"
 )
+
+all_ligand_aupr_normalization <- function(df, result) {
+    activities <- ligand_activities(result)
+    ligand_col <- if ("test_ligand" %in% colnames(activities)) "test_ligand" else "ligand"
+    values <- activities$aupr_corrected
+    denom <- max(values, na.rm = TRUE) - min(values, na.rm = TRUE)
+    if (!is.finite(denom) || denom == 0) {
+        stop("Cannot normalize AUPR: zero or invalid range.")
+    }
+    normalized <- (values - min(values, na.rm = TRUE)) / denom
+    norm_map <- stats::setNames(normalized, activities[[ligand_col]])
+    missing_ligands <- setdiff(unique(df$ligand), names(norm_map))
+    if (length(missing_ligands) > 0) {
+        stop("Missing AUPR normalization for ligands: ", paste(missing_ligands, collapse = ", "))
+    }
+    df$weighted_score <- (df$ligand_expression + unname(norm_map[df$ligand])) / 2
+    df
+}
+
+data_basal <- all_ligand_aupr_normalization(data_basal, figure3_receiver_results[["basal"]])
+data_parabasal <- all_ligand_aupr_normalization(data_parabasal, figure3_receiver_results[["parabasal"]])
+data_dividing <- all_ligand_aupr_normalization(data_dividing, figure3_receiver_results[["dividing"]])
+data_suprabasal <- all_ligand_aupr_normalization(data_suprabasal, figure3_receiver_results[["suprabasal"]])
 
 limit_top3_senders_by_ligand_expr <- function(df) {
     initial_n <- nrow(df)
@@ -491,44 +590,111 @@ data_parabasal_top3 <- limit_top3_senders_by_ligand_expr(data_parabasal)
 data_dividing_top3 <- limit_top3_senders_by_ligand_expr(data_dividing)
 data_suprabasal_top3 <- limit_top3_senders_by_ligand_expr(data_suprabasal)
 
+combined_data_top3 <- combine_sankey_data(
+    data_basal_top3,
+    data_parabasal_top3,
+    data_dividing_top3,
+    data_suprabasal_top3,
+    threshold_quantile = 0
+)
 subset_data_top3 <- combine_sankey_data(
     data_basal_top3,
     data_parabasal_top3,
     data_dividing_top3,
     data_suprabasal_top3,
-    threshold_quantile = 0.90
+    threshold_quantile = 0.91
 )
 
-# Backward-compatible alias for downstream export code.
-sankey_data <- subset_data_top3
+ligand_order_requested <- c(
+    "CDH6", "GPC6", "COL4A2", "ANGPTL4", "COL18A", "COL12A1", "COL6A2",
+    "ANGPTL1", "LAMA4", "SERPINF1", "SEMA3A", "S100B", "ALCAM", "DLK2"
+)
+receptor_order_requested <- c(
+    "PTGFRN", "LRP1", "ITGB5", "DDR1", "ITGB1", "SDC1", "SDC4", "GPC1",
+    "ITGA2", "PTPRS", "ITGAV", "LRP6", "PLXDC2", "ITGA6", "ITGA3", "PLXNA2",
+    "NRP2", "NRP1", "ALCAM", "NOTCH1"
+)
+ligand_order <- ligand_order_requested
+ligands_present <- unique(subset_data_top3$ligand)
+receptors_present <- unique(subset_data_top3$receptor)
+if ("COL18A" %in% ligand_order && !"COL18A" %in% ligands_present && "COL18A1" %in% ligands_present) {
+    ligand_order[ligand_order == "COL18A"] <- "COL18A1"
+    message("Using COL18A1 in place of requested COL18A because COL18A1 is present in subset_data_top3 and COL18A is not.")
+}
+missing_ligands <- setdiff(ligand_order, ligands_present)
+missing_receptors <- setdiff(receptor_order_requested, receptors_present)
+if (length(missing_ligands) > 0) {
+    warning("Requested Figure 3K ligands absent from subset_data_top3: ", paste(missing_ligands, collapse = ", "))
+}
+if (length(missing_receptors) > 0) {
+    warning("Requested Figure 3K receptors absent from subset_data_top3: ", paste(missing_receptors, collapse = ", "))
+}
+figure3_required_paths <- combined_data_top3 %>%
+    filter(sender == "basal", ligand == "DLK2", receptor == "NOTCH1", receiver == "parabasal")
+if (length(targets(grn)) == 12742 && nrow(figure3_required_paths) == 0) {
+    stop("Expected basal -> DLK2 -> NOTCH1 -> parabasal path is missing before thresholding.")
+}
+required_path_in_subset <- subset_data_top3 %>%
+    filter(sender == "basal", ligand == "DLK2", receptor == "NOTCH1", receiver == "parabasal") %>%
+    nrow() > 0
+
+figure3_data <- bind_rows(subset_data_top3, figure3_required_paths) %>%
+    distinct() %>%
+    filter(ligand %in% ligand_order)
+
+if (length(targets(grn)) == 12742 &&
+    nrow(figure3_data %>% filter(sender == "basal", ligand == "DLK2", receptor == "NOTCH1", receiver == "parabasal")) == 0) {
+    stop("Expected Figure 3K plotted table to include basal -> DLK2 -> NOTCH1 -> parabasal.")
+}
+
+# Backward-compatible alias for downstream export code; this is the exact plotted Figure 3K table.
+sankey_data <- figure3_data
 
 cat("Raw ccflowR path rows:",
     nrow(data_basal) + nrow(data_parabasal) + nrow(data_dividing) + nrow(data_suprabasal), "\n")
+cat("Rows in combined_data_top3 before threshold:", nrow(combined_data_top3), "\n")
 cat("Rows in subset_data_top3:", nrow(subset_data_top3), "\n")
 cat("Receivers in subset_data_top3:", paste(sort(unique(subset_data_top3$receiver)), collapse = ", "), "\n")
-head(subset_data_top3)
+cat("Required Figure 3K manuscript path in thresholded table:", required_path_in_subset, "\n")
+cat("Required Figure 3K manuscript paths restored:", nrow(figure3_required_paths), "\n")
+cat("Rows in Figure 3K plotted table:", nrow(figure3_data), "\n")
+cat("Receivers in Figure 3K plotted table:", paste(sort(unique(figure3_data$receiver)), collapse = ", "), "\n")
+head(figure3_data)
 ```
 
 ```{r 02_standard_workflow_cell_40, message=TRUE, warning=TRUE}
 celltype_colors <- c(
     "B Cell" = "#17BECFA3", "Endothelial" = "#E89FBDA3",
-    "Fibroblast" = "#9C46D3A3", "Melanocyte" = "#8C564BA3",
+    "Epithelial" = "#1F77B4A3", "Fibroblast" = "#9C46D3A3", "Melanocyte" = "#8C564BA3",
     "Muscle" = "#FCDD00A3", "Myeloid" = "#FF7F0EA3",
     "Myofibroblast" = "#D64545A3", "Neuronal" = "#7F7F7FA3",
     "T Cell" = "#006837A3", "basal" = "#FA8072A3",
-    "dividing" = "#20B2AAA3", "parabasal" = "#6B8E23A3",
+    "dividing" = "#20B2AAA3", "other" = "#C5B0D5A3", "parabasal" = "#6B8E23A3",
     "suprabasal" = "#9370DBA3", "transitioning" = "#FFA500A3"
 )
+PLOT_FONT_SIZE <- 16
 
-suppressMessages(
-    ccflowR::sankey_plot(subset_data_top3, colors = celltype_colors) +
+sankey_plot <- suppressMessages(
+    ccflowR::sankey_plot(figure3_data, colors = celltype_colors) +
+        ccflowR::sankey_order(ligands = ligand_order, receptors = receptor_order_requested) +
         ccflowR::sankey_colors(by = "receiver") +
         ccflowR::sankey_alpha(0.6) +
         ccflowR::sankey_title("Contralateral") +
-        ccflowR::sankey_font(family = "Arial", size = 12) +
+        ccflowR::sankey_font(family = "Arial", size = PLOT_FONT_SIZE) +
+        ccflowR::sankey_labels(size = PLOT_FONT_SIZE) +
         ccflowR::sankey_layout(width = 800, height = 1083)
 )
+display_ccflowr_sankey(
+    sankey_plot,
+    width = 800,
+    height = 1083,
+    preview_file = file.path(PROJECT_DIR, "notebooks", "figures", "02-ccflowr-sankey.png")
+)
 ```
+
+Static GitHub preview:
+
+![Figure 3K ccflowR Sankey river plot](figures/02-ccflowr-sankey.png)
 
 ## Step 7: Export
 
@@ -538,10 +704,12 @@ suppressMessages(
 if (!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
 
 saveRDS(receiver_results, file.path(OUTPUT_DIR, "contralateral_receiver_results.rds"))
+saveRDS(figure3_receiver_results, FIGURE3_RECEIVER_RESULTS_CACHE)
 write.csv(activities_tbl, file.path(OUTPUT_DIR, "receiver_ligand_activities.csv"), row.names = FALSE)
 write.csv(links_tbl, file.path(OUTPUT_DIR, "receiver_ligand_target_links.csv"), row.names = FALSE)
 write.csv(sankey_data, file.path(OUTPUT_DIR, "contralateral_sankey_data.csv"), row.names = FALSE)
 write.csv(subset_data_top3, file.path(OUTPUT_DIR, "contralateral_subset_data_top3.csv"), row.names = FALSE)
+write.csv(figure3_data, file.path(OUTPUT_DIR, "contralateral_figure3_sankey_data.csv"), row.names = FALSE)
 
 cat("Saved receiver result list and export tables to:", OUTPUT_DIR, "\n")
 ```
@@ -579,19 +747,205 @@ for (pkg in session_pkgs) {
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `GRN_FILE` | Yes | Contralateral context GRN. This notebook uses the supplied reference GRN when it is available; otherwise it falls back to `data/gene_x_tf.csv`. |
+| `GRN_FILE` | Yes | Contralateral context GRN. The default path is `data/gene_x_tf.csv`; `CONTEXTNET_TUTORIAL02_GRN` can override it. |
 | `TISSUE_VALUE` | Yes | Tissue context retained before analysis; this tutorial uses only `C` |
 | `SENDER` | Yes | Sender cell type(s) expressing ligands; `NULL` auto-detects sender cell types with more than `MIN_CELLS` cells |
-| `RECEIVERS` | Yes | Epithelial receiver states analyzed separately |
-| `RECEIVER_COMPARISONS` | Yes | Defines each receiver state against the other epithelial states |
+| `RECEIVERS` | Yes | Epithelial subtypes analyzed separately |
+| `RECEIVER_COMPARISONS` | Yes | Defines each epithelial subtype against the other epithelial subtypes |
 | `de_subset_receiver` | Yes | Set to `FALSE` here because DE is an epithelial-state comparison across contralateral cells |
 | `TOP_N_LIGANDS` | No | Number of ligands retained for receiver-level review and ccflowR input |
 | `MIN_CELLS` | No | Minimum sender cell count used for automatic sender detection and Sankey filtering |
 
 ## Using the Context-Specific Matrix with nichenetr Directly
 
-You can extract the ContextNet ligand-target matrix and pass it into lower-level nichenetr functions when you need full control over the receiver gene set, background genes, or sender ligand universe.
+The ContextNet ligand-target matrix can be extracted and passed into lower-level nichenetr functions when full control over the receiver gene set, background genes, sender ligand universe, or native NicheNet visualizations is needed. The important replacement is the matrix argument: use `ligand_target_matrix(network)` in place of the default NicheNet ligand-target matrix.
+
+```{r 02_standard_workflow_cell_48, message=TRUE, warning=TRUE}
+# Extract the context-specific matrix. Rows are target genes; columns are ligands.
+context_ltm <- ligand_target_matrix(network)
+cat("Context-specific ligand-target matrix:", nrow(context_ltm), "targets x", ncol(context_ltm), "ligands\n")
+```
+
+A native NicheNet ligand-activity workflow can use the ContextNet matrix directly:
 
 ```r
-ltm <- ligand_target_matrix(network)
+native_activities <- nichenetr::predict_ligand_activities(
+    geneset = receiver_genes,
+    background_expressed_genes = background_genes,
+    ligand_target_matrix = context_ltm,
+    potential_ligands = potential_ligands
+)
 ```
+
+The same matrix can be used with native nichenetr plots. This example reuses the basal result already computed above, so the heatmap is still driven by the HNSCC contralateral ContextNet analysis rather than by the default NicheNet prior.
+
+```{r 02_standard_workflow_cell_49, message=TRUE, warning=TRUE}
+options(repr.plot.width = 10, repr.plot.height = 8)
+
+native_receiver <- "basal"
+native_ligands <- head(top_ligands(receiver_results[[native_receiver]]), 10)
+native_targets <- head(top_targets(receiver_results[[native_receiver]], n = 50), 40)
+
+native_heatmap_matrix <- context_ltm[
+    intersect(native_targets, rownames(context_ltm)),
+    intersect(native_ligands, colnames(context_ltm)),
+    drop = FALSE
+]
+
+cat("Native nichenetr heatmap input:", nrow(native_heatmap_matrix), "targets x", ncol(native_heatmap_matrix), "ligands\n")
+
+if (nrow(native_heatmap_matrix) > 0 && ncol(native_heatmap_matrix) > 0) {
+    suppressWarnings(print(nichenetr::make_heatmap_ggplot(
+        native_heatmap_matrix,
+        y_name = "Predicted target",
+        x_name = "Prioritized ligand",
+        legend_title = "Regulatory\npotential",
+        color = "orange",
+        x_axis_position = "top"
+    )))
+}
+```
+
+A static circos plot summarizes ligand-receptor paths from a native NicheNet-style prioritization table. The code below reuses `subset_data_top3`, converts the ContextNet path score to the `prioritization_score` column expected by `nichenetr::make_circos_lr()`, and keeps the same cell-type color map used in the ccflowR Sankey plot.
+
+```{r 02_standard_workflow_cell_50, message=TRUE, warning=TRUE}
+if (requireNamespace("circlize", quietly = TRUE)) {
+    options(repr.plot.width = 10, repr.plot.height = 8)
+
+    native_lr_tbl <- subset_data_top3 %>%
+        arrange(desc(weighted_score)) %>%
+        slice_head(n = 10) %>%
+        mutate(prioritization_score = scaled_weighted_score) %>%
+        select(sender, receiver, ligand, receptor, prioritization_score)
+
+    native_senders <- sort(unique(native_lr_tbl$sender))
+    native_receivers <- sort(unique(native_lr_tbl$receiver))
+    native_sender_colors <- celltype_colors[native_senders]
+    native_receiver_colors <- celltype_colors[native_receivers]
+    if (any(is.na(native_sender_colors))) {
+        native_sender_colors[is.na(native_sender_colors)] <- grDevices::hcl.colors(sum(is.na(native_sender_colors)), "Dark 3")
+    }
+    if (any(is.na(native_receiver_colors))) {
+        native_receiver_colors[is.na(native_receiver_colors)] <- grDevices::hcl.colors(sum(is.na(native_receiver_colors)), "Dark 3")
+    }
+
+
+
+    save_static_circos_lr <- function(prioritized_tbl, sender_colors, receiver_colors, file,
+                                      title = NULL, width = 1200, height = 960, res = 150) {
+        dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+        circos_tbl <- prioritized_tbl %>%
+            ungroup() %>%
+            mutate(
+                circos_weight = pmax(as.numeric(prioritization_score), .Machine$double.eps),
+                ligand_node = paste("L", sender, ligand, sep = "|"),
+                receptor_node = paste("R", receiver, receptor, sep = "|")
+            )
+        ligand_nodes <- circos_tbl %>% distinct(ligand_node, sender, ligand)
+        receptor_nodes <- circos_tbl %>% distinct(receptor_node, receiver, receptor)
+        links_circle <- circos_tbl %>%
+            group_by(ligand_node, receptor_node) %>%
+            summarise(circos_weight = max(circos_weight, na.rm = TRUE), .groups = "drop")
+        grid_col <- c(
+            stats::setNames(sender_colors[ligand_nodes$sender], ligand_nodes$ligand_node),
+            stats::setNames(receiver_colors[receptor_nodes$receiver], receptor_nodes$receptor_node)
+        )
+        grid_col[is.na(grid_col)] <- "#BDBDBD"
+        sector_order <- c(ligand_nodes$ligand_node, receptor_nodes$receptor_node)
+        gaps <- rep(1, length(sector_order))
+        if (length(sector_order) > 1) {
+            gaps[length(ligand_nodes$ligand_node)] <- 8
+            gaps[length(sector_order)] <- 8
+        }
+
+        grDevices::png(file, width = width, height = height, res = res, bg = "white")
+        on.exit({
+            circlize::circos.clear()
+            grDevices::dev.off()
+        }, add = TRUE)
+        graphics::layout(matrix(c(1, 2), nrow = 1), widths = c(4.2, 1.35))
+        graphics::par(mar = c(1, 1, 3, 0))
+        circlize::circos.clear()
+        circlize::circos.par(gap.degree = gaps, start.degree = 90)
+        circlize::chordDiagram(
+            links_circle,
+            directional = 1,
+            order = sector_order,
+            grid.col = grid_col,
+            transparency = 0.35,
+            annotationTrack = "grid",
+            preAllocateTracks = list(track.height = 0.25),
+            direction.type = c("diffHeight", "arrows"),
+            link.arr.length = 0.04,
+            link.arr.type = "big.arrow",
+            grid.border = "gray35",
+            link.lwd = 0.8,
+            link.lty = 1,
+            reduce = 0,
+            scale = TRUE
+        )
+        circlize::circos.trackPlotRegion(
+            track.index = 1,
+            panel.fun = function(x, y) {
+                sector <- circlize::get.cell.meta.data("sector.index")
+                parts <- strsplit(sector, "\\|")[[1]]
+                label <- parts[length(parts)]
+                circlize::circos.text(
+                    circlize::get.cell.meta.data("xcenter"),
+                    circlize::get.cell.meta.data("ylim")[1],
+                    label,
+                    facing = "clockwise",
+                    niceFacing = TRUE,
+                    adj = c(0, 0.5),
+                    cex = 0.62
+                )
+            },
+            bg.border = NA
+        )
+        if (!is.null(title)) {
+            graphics::title(title, line = 1)
+        }
+        graphics::par(mar = c(1, 0, 3, 1), xpd = NA)
+        graphics::plot.new()
+        graphics::plot.window(xlim = c(0, 1), ylim = c(0, 1))
+        legend_cex <- if (length(sender_colors) > 8) 0.6 else 0.75
+        graphics::legend(
+            x = 0, y = 1, legend = names(sender_colors), fill = unname(sender_colors),
+            title = "Sender", bty = "n", cex = legend_cex, x.intersp = 0.7, y.intersp = 0.9
+        )
+        receiver_y <- max(0.05, 1 - 0.08 * (length(sender_colors) + 2))
+        graphics::legend(
+            x = 0, y = receiver_y, legend = names(receiver_colors), fill = unname(receiver_colors),
+            title = "Receiver", bty = "n", cex = 0.75, x.intersp = 0.7, y.intersp = 0.9
+        )
+        invisible(file)
+    }
+
+    display_static_png <- function(file) {
+        if (requireNamespace("IRdisplay", quietly = TRUE)) {
+            IRdisplay::display_png(file = file)
+        } else {
+            message("Static figure written to ", file)
+        }
+        invisible(file)
+    }
+
+    cat("Native nichenetr ligand-receptor circos rows:", nrow(native_lr_tbl), "\n")
+
+    native_circos_file <- file.path(PROJECT_DIR, "notebooks", "figures", "02-native-circos.png")
+    save_static_circos_lr(
+        native_lr_tbl,
+        native_sender_colors,
+        native_receiver_colors,
+        native_circos_file,
+        title = "Native NicheNet ligand-receptor circos"
+    )
+    display_static_png(native_circos_file)
+} else {
+    message("Install circlize to draw native nichenetr circos plots.")
+}
+```
+
+Static GitHub preview:
+
+![Native NicheNet circos plot with sender and receiver legends](figures/02-native-circos.png)
