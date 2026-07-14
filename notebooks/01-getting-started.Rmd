@@ -36,7 +36,6 @@ The package importer normalizes those inputs into a `ContextGRN` object. The ups
 Install ContextNet before starting this tutorial using the repository [installation instructions](../README.md#installation). The cells below only load packages, locate the included example dataset, and print the expected input files.
 
 The notebook can be run from the repository root or from the `notebooks/` directory. The setup cell normalizes the working directory to the repository root so the same source works in Jupyter, JupyterLab, `nbconvert`, and RStudio.
-
 ```{r 01_getting_started_cell_03, message=TRUE, warning=TRUE}
 suppressPackageStartupMessages({
     library(ContextNet)
@@ -57,7 +56,7 @@ if (HAS_CCFLOWR) {
 theme_set(theme_minimal(base_family = "sans"))
 
 
-display_ccflowr_sankey <- function(sankey_plot, width, height, preview = TRUE) {
+display_ccflowr_sankey <- function(sankey_plot, width, height, preview = TRUE, preview_file = NULL) {
     # Display the actual interactive ccflowR widget in Jupyter/JupyterLab.
     fig <- ccflowR::sankey_render(sankey_plot)
     if (requireNamespace("repr", quietly = TRUE) && requireNamespace("IRdisplay", quietly = TRUE)) {
@@ -76,10 +75,15 @@ display_ccflowr_sankey <- function(sankey_plot, width, height, preview = TRUE) {
         return(invisible(sankey_plot))
     }
 
-    png_file <- tempfile(fileext = ".png")
+    if (is.null(preview_file)) {
+        png_file <- tempfile(fileext = ".png")
+    } else {
+        png_file <- preview_file
+        dir.create(dirname(png_file), recursive = TRUE, showWarnings = FALSE)
+    }
     exported <- FALSE
     tryCatch({
-        ccflowR::sankey_save(sankey_plot, png_file, width = width, height = height)
+        suppressMessages(ccflowR::sankey_save(sankey_plot, png_file, width = width, height = height))
         exported <- file.exists(png_file) && file.info(png_file)[["size"]] > 0
     }, error = function(e) {
         message(
@@ -99,11 +103,9 @@ display_ccflowr_sankey <- function(sankey_plot, width, height, preview = TRUE) {
     invisible(sankey_plot)
 }
 ```
-
 ```{r 01_getting_started_cell_04, message=TRUE, warning=TRUE}
 check_ecosystem(verbose = TRUE)
 ```
-
 ```{r 01_getting_started_cell_05, message=TRUE, warning=TRUE}
 PROJECT_DIR <- normalizePath(getwd(), mustWork = TRUE)
 if (basename(PROJECT_DIR) == "notebooks" &&
@@ -164,7 +166,6 @@ The included example dataset contains all inputs needed for a minimal ContextNet
 - `lr_network_human_21122021.rds` and `weighted_networks_nsga2r_final.rds`: tiny NicheNet-compatible prior files.
 
 The example dataset is synthetic. It is useful for installation testing because it is small, deterministic, and fully shareable.
-
 ```{r 01_getting_started_cell_07, message=TRUE, warning=TRUE}
 seurat_obj <- readRDS(SEURAT_FILE)
 
@@ -180,7 +181,6 @@ The printed table confirms that the toy object has four cell populations. `sende
 ## Step 2: Import the Context-Specific Gene Regulatory Network (GRN)
 
 `import_grn()` reads the target-gene x transcription-factor matrix and returns a `ContextGRN`. This object stores the regulatory evidence before any NicheNet propagation has happened. At this point, the edges are transcription-factor to target-gene relationships, not ligand-target predictions.
-
 ```{r 01_getting_started_cell_10, message=TRUE, warning=TRUE}
 grn <- import_grn(GRN_FILE, verbose = FALSE)
 
@@ -203,7 +203,6 @@ Interpret this output before continuing. A useful `ContextGRN` should have non-z
 3. the context-specific transcription-factor to target-gene GRN.
 
 The result is a `ContextNetwork`. Its central data structure is a ligand-target matrix: rows are target genes, columns are ligands, and values are propagated regulatory-potential scores. This object is reusable across many sender/receiver analyses from the same biological context.
-
 ```{r 01_getting_started_cell_13, message=TRUE, warning=TRUE}
 network <- integrate_networks(
     grn,
@@ -225,7 +224,6 @@ The matrix should show stronger `TGFB1` weights for `SERPINE1` and `CDKN1A`, and
 ## Step 4: Predict Ligand Activity for One Receiver Program
 
 For the smoke test, the receiver target genes are provided directly with `geneset_oi = c("SERPINE1", "CDKN1A")`. This avoids running differential expression on a toy object and makes the expected output deterministic. In a full analysis, ContextNet can use either a curated receiver gene set or differentially expressed genes from a cell-type or condition comparison.
-
 ```{r 01_getting_started_cell_16, message=TRUE, warning=TRUE}
 result <- predict_ligand_activity_nichenet(
     object = seurat_obj,
@@ -255,7 +253,6 @@ The expected top ligand is `TGFB1`. The most important columns are:
 - `pearson`: correlation between predicted ligand-target regulatory potential and the receiver gene-set label.
 
 For this fixture, `TGFB1` is intentionally connected to `SERPINE1` and `CDKN1A`, so it should rank above `FGF2`.
-
 ```{r 01_getting_started_cell_18, message=TRUE, warning=TRUE}
 ligand_target_links(result)
 ```
@@ -265,7 +262,6 @@ The ligand-target link table explains why the ligand ranked highly. In the examp
 ## Step 5: Visualize the Main Outputs
 
 The bar plot summarizes ligand activity. The heatmap-like tile plot shows which ligand-target links support the ranking. These plots are intentionally simple so the smoke-test output is easy to compare across installations.
-
 ```{r 01_getting_started_cell_21, message=TRUE, warning=TRUE}
 activities <- ligand_activities(result)
 activities$test_ligand <- factor(
@@ -281,7 +277,6 @@ ggplot(activities, aes(x = aupr, y = test_ligand)) +
         title = "Smoke test ligand ranking"
     )
 ```
-
 ```{r 01_getting_started_cell_22, message=TRUE, warning=TRUE}
 links <- ligand_target_links(result)
 
@@ -301,7 +296,6 @@ ggplot(links, aes(x = ligand, y = target, fill = weight)) +
 `ccflowR` is an optional visualization package for Sankey or river plots of cell-cell communication. It helps when a table of ligand activities is no longer enough: for example, when the goal is to see which sender cell types, ligands, receptors, and receiver cells form the highest-priority paths.
 
 ContextNet prepares the path table with `prepare_for_ccflowr()` and `combine_sankey_data()`. If `ccflowR` is not installed, the core ContextNet analysis still works; only this visualization is skipped.
-
 ```{r 01_getting_started_cell_24, message=TRUE, warning=TRUE}
 # prepare_for_ccflowr() expands the ContextResult into sender-ligand-receptor-
 # receiver paths. The toy dataset is tiny, so min_cells is intentionally low.
@@ -320,7 +314,6 @@ sankey_data <- combine_sankey_data(sankey_raw, threshold_quantile = 0)
 cat("ccflowR input rows:", nrow(sankey_data), "\n")
 head(sankey_data)
 ```
-
 ```{r 01_getting_started_cell_25, message=TRUE, warning=TRUE}
 if (HAS_CCFLOWR) {
     cell_colors <- c(
@@ -336,7 +329,12 @@ if (HAS_CCFLOWR) {
             ccflowR::sankey_font(family = "Arial", size = 12) +
             ccflowR::sankey_layout(width = 760, height = 520)
     )
-    display_ccflowr_sankey(sankey_plot, width = 760, height = 520)
+    display_ccflowr_sankey(
+        sankey_plot,
+        width = 760,
+        height = 520,
+        preview_file = file.path(PROJECT_DIR, "notebooks", "figures", "01-ccflowr-sankey.png")
+    )
 } else {
     message("Skipping Sankey plot because ccflowR is not installed.")
 }
@@ -355,7 +353,6 @@ ContextNet uses three main S4 objects. The important point is that each object a
 | `ContextResult` | `predict_ligand_activity_nichenet()` | Which ligands explain this receiver gene program? | `ligand_activities()`, `top_ligands()`, `ligand_target_links()`, `parameters()` |
 
 The code below prints compact summaries of those objects so local output can be compared with the expected shape.
-
 ```{r 01_getting_started_cell_28, message=TRUE, warning=TRUE}
 object_summary <- list(
     ContextGRN = list(
@@ -398,7 +395,6 @@ If this notebook runs successfully, the installation is functional for the core 
 - Use Tutorial 02 for a real Seurat object and a context-specific GRN in a single-tissue epithelial-subtype analysis.
 - Use Tutorial 03 for differential cell-cell communication analysis across conditions.
 - Replace the smoke-test `gene_x_tf.csv` with a study-specific gene regulatory network (GRN), and replace the smoke-test Seurat object with the expression object for the study.
-
 ```{r 01_getting_started_cell_30, message=TRUE, warning=TRUE}
 session_pkgs <- c("ContextNet", "Seurat", "nichenetr", "multinichenetr", "ggplot2", "ccflowR")
 cat("R version:", R.version.string, "\n")
