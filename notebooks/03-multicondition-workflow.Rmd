@@ -55,7 +55,7 @@ suppressWarnings(suppressPackageStartupMessages({
 theme_set(theme_minimal(base_family = "sans"))
 
 
-display_ccflowr_sankey <- function(sankey_plot, width, height, preview = TRUE) {
+display_ccflowr_sankey <- function(sankey_plot, width, height, preview = TRUE, preview_file = NULL) {
     # Display the actual interactive ccflowR widget in Jupyter/JupyterLab.
     fig <- ccflowR::sankey_render(sankey_plot)
     if (requireNamespace("repr", quietly = TRUE) && requireNamespace("IRdisplay", quietly = TRUE)) {
@@ -74,10 +74,15 @@ display_ccflowr_sankey <- function(sankey_plot, width, height, preview = TRUE) {
         return(invisible(sankey_plot))
     }
 
-    png_file <- tempfile(fileext = ".png")
+    if (is.null(preview_file)) {
+        png_file <- tempfile(fileext = ".png")
+    } else {
+        png_file <- preview_file
+        dir.create(dirname(png_file), recursive = TRUE, showWarnings = FALSE)
+    }
     exported <- FALSE
     tryCatch({
-        ccflowR::sankey_save(sankey_plot, png_file, width = width, height = height)
+        suppressMessages(ccflowR::sankey_save(sankey_plot, png_file, width = width, height = height))
         exported <- file.exists(png_file) && file.info(png_file)[["size"]] > 0
     }, error = function(e) {
         message(
@@ -125,7 +130,7 @@ display_path <- function(path) {
 
 cat("Using project root:", basename(getwd()), "\n")
 
-DATA_PATH <- "data"
+DATA_PATH <- file.path(PROJECT_DIR, "data")
 GRN_FILE <- Sys.getenv("CONTEXTNET_TUTORIAL03_GRN", unset = file.path(DATA_PATH, "gene_x_tf.csv"))
 SEURAT_FILE <- Sys.getenv("CONTEXTNET_TUTORIAL_SEURAT", unset = file.path(DATA_PATH, "seurat_obj.rds"))
 NICHENET_DB <- Sys.getenv("CONTEXTNET_NICHENET_DB", unset = DATA_PATH)
@@ -301,7 +306,7 @@ if (USE_PRECOMPUTED_MULTINICHENET && file.exists(PRECOMPUTED_MULTINICHENET)) {
     }
 
     if (!network_loaded) {
-        grn <- import_grn(GRN_FILE)
+        grn <- import_grn(GRN_FILE, format = "pipeline")
         if (length(targets(grn)) != 12513) {
             warning("GRN dimensions differ from the HNSCC tutorial data; MultiNicheNet rankings and figures may differ.")
         }
@@ -495,7 +500,12 @@ sankey_plot <- suppressMessages(
             receptors = c("EGFR", "GZD6", "NOTCH1", "LRP6", "ROR1", "FZD6", "ITGA9", "ITGB1", "EPHA4", "CD63")
         )
 )
-display_ccflowr_sankey(sankey_plot, width = 954, height = 1200)
+display_ccflowr_sankey(
+    sankey_plot,
+    width = 954,
+    height = 1200,
+    preview_file = file.path(PROJECT_DIR, "notebooks", "figures", "03-ccflowr-sankey.png")
+)
 ```
 
 ## Step 6: Save Results
@@ -596,7 +606,7 @@ The saved `pkg_mn_ctx` object can still be used for native MultiNicheNet plots b
 
 ```{r 03_multicondition_workflow_cell_39, message=TRUE, warning=TRUE}
 if (requireNamespace("circlize", quietly = TRUE)) {
-    options(repr.plot.width = 10, repr.plot.height = 8)
+    options(repr.plot.width = 11, repr.plot.height = 8)
 
     native_mn_tbl <- ctx_prio %>%
         filter(group == IDENT_1) %>%
@@ -615,13 +625,32 @@ if (requireNamespace("circlize", quietly = TRUE)) {
         native_receiver_colors[is.na(native_receiver_colors)] <- grDevices::hcl.colors(sum(is.na(native_receiver_colors)), "Dark 3")
     }
 
-    mn_circos_plots <- multinichenetr::make_circos_one_group(
-        native_mn_tbl,
-        colors_sender = native_sender_colors,
-        colors_receiver = native_receiver_colors
+    capture_recorded_plots <- function(expr, width = 8, height = 8) {
+        tmp <- tempfile(fileext = ".pdf")
+        grDevices::pdf(tmp, width = width, height = height, onefile = TRUE)
+        grDevices::dev.control("enable")
+        on.exit({
+            grDevices::dev.off()
+            unlink(tmp)
+        }, add = TRUE)
+        force(expr)
+    }
+
+    mn_circos_plots <- capture_recorded_plots(
+        multinichenetr::make_circos_one_group(
+            native_mn_tbl,
+            colors_sender = native_sender_colors,
+            colors_receiver = native_receiver_colors
+        ),
+        width = 8,
+        height = 8
     )
-    grDevices::replayPlot(mn_circos_plots[[IDENT_1]])
-    grDevices::replayPlot(mn_circos_plots$legend)
+    mn_circos_combined <- cowplot::plot_grid(
+        mn_circos_plots[[IDENT_1]],
+        mn_circos_plots$legend,
+        rel_widths = c(1, 0.18)
+    )
+    print(mn_circos_combined)
 } else {
     message("Install circlize to draw native MultiNicheNet circos plots.")
 }

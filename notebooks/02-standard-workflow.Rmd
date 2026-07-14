@@ -46,7 +46,7 @@ suppressWarnings(suppressPackageStartupMessages({
 theme_set(theme_minimal(base_family = "sans"))
 
 
-display_ccflowr_sankey <- function(sankey_plot, width, height, preview = TRUE) {
+display_ccflowr_sankey <- function(sankey_plot, width, height, preview = TRUE, preview_file = NULL) {
     # Display the actual interactive ccflowR widget in Jupyter/JupyterLab.
     fig <- ccflowR::sankey_render(sankey_plot)
     if (requireNamespace("repr", quietly = TRUE) && requireNamespace("IRdisplay", quietly = TRUE)) {
@@ -65,10 +65,15 @@ display_ccflowr_sankey <- function(sankey_plot, width, height, preview = TRUE) {
         return(invisible(sankey_plot))
     }
 
-    png_file <- tempfile(fileext = ".png")
+    if (is.null(preview_file)) {
+        png_file <- tempfile(fileext = ".png")
+    } else {
+        png_file <- preview_file
+        dir.create(dirname(png_file), recursive = TRUE, showWarnings = FALSE)
+    }
     exported <- FALSE
     tryCatch({
-        ccflowR::sankey_save(sankey_plot, png_file, width = width, height = height)
+        suppressMessages(ccflowR::sankey_save(sankey_plot, png_file, width = width, height = height))
         exported <- file.exists(png_file) && file.info(png_file)[["size"]] > 0
     }, error = function(e) {
         message(
@@ -116,7 +121,7 @@ display_path <- function(path) {
 
 cat("Using project root:", basename(getwd()), "\n")
 
-DATA_PATH <- "data"
+DATA_PATH <- file.path(PROJECT_DIR, "data")
 GRN_FILE <- Sys.getenv("CONTEXTNET_TUTORIAL02_GRN", unset = file.path(DATA_PATH, "gene_x_tf.csv"))
 SEURAT_FILE <- Sys.getenv("CONTEXTNET_TUTORIAL_SEURAT", unset = file.path(DATA_PATH, "seurat_obj.rds"))
 NICHENET_DB <- Sys.getenv("CONTEXTNET_NICHENET_DB", unset = DATA_PATH)
@@ -127,6 +132,7 @@ CACHE_DIR <- file.path(DATA_PATH, "cache")
 NETWORK_CACHE <- file.path(CACHE_DIR, "contextnet_network_contralateral.rds")
 OUTPUT_DIR <- file.path(CACHE_DIR, "tutorial-02-outputs")
 RECEIVER_RESULTS_CACHE <- file.path(OUTPUT_DIR, "contralateral_receiver_results.rds")
+FIGURE3_RECEIVER_RESULTS_CACHE <- file.path(OUTPUT_DIR, "contralateral_figure3_receiver_results.rds")
 USE_PRECOMPUTED_RECEIVER_RESULTS <- tolower(Sys.getenv(
     "CONTEXTNET_USE_PRECOMPUTED_TUTORIAL02",
     unset = "true"
@@ -164,7 +170,7 @@ cat("NicheNet DB:", display_path(NICHENET_DB), "\n")
 The context-specific GRN is a gene × TF matrix (CSV) where rows are target genes, columns are transcription factors, and values are regulatory weights inferred from matched scRNA-seq + scATAC-seq data.
 
 ```{r 02_standard_workflow_cell_05, message=TRUE, warning=TRUE}
-grn <- import_grn(GRN_FILE)
+grn <- import_grn(GRN_FILE, format = "pipeline")
 cat("Imported ContextGRN from:", display_path(GRN_FILE), "\n")
 cat("  TFs:", length(tfs(grn)), "\n")
 cat("  Target genes:", length(targets(grn)), "\n")
@@ -255,9 +261,18 @@ if (is.null(SENDER)) {
     SENDER <- names(celltype_counts)[celltype_counts > MIN_CELLS]
 }
 
+# The manuscript Figure 3K Sankey panel uses a merged parabasal+dividing
+# receiver branch only for the parabasal receiver analysis.
+FIGURE3_GROUP_COL <- paste0(GROUP_COL, "_figure3")
+figure3_labels <- as.character(seurat_c[[GROUP_COL]][, 1])
+figure3_labels[figure3_labels %in% c("parabasal", "dividing")] <- "parabasal"
+seurat_c[[FIGURE3_GROUP_COL]] <- factor(figure3_labels)
+SENDER_FIGURE3 <- setdiff(SENDER, "dividing")
+
 cat("Senders:", paste(SENDER, collapse = ", "), "\n")
 cat("Receivers:", paste(RECEIVERS, collapse = ", "), "\n")
 cat("Tissue context:", TISSUE_VALUE, "only\n")
+cat("Figure 3K merged receiver column:", FIGURE3_GROUP_COL, "\n")
 ```
 
 ### Analysis Design Check
@@ -284,16 +299,18 @@ cat("Network ligands measured:", length(intersect(ligands(network), expr_genes))
 For each epithelial subtype, ContextNet defines the receiver gene program as that subtype versus the other epithelial subtypes **within contralateral tissue**. The ligand ranking then asks which sender-cell ligands best recover that receiver program through the context-specific ligand-target matrix.
 
 ```{r 02_standard_workflow_cell_18, message=TRUE, warning=TRUE}
-run_receiver_analysis <- function(receiver) {
-    comparison <- RECEIVER_COMPARISONS[[receiver]]
+run_receiver_analysis <- function(receiver,
+                                  comparison = RECEIVER_COMPARISONS[[receiver]],
+                                  sender_use = SENDER,
+                                  group_col = GROUP_COL) {
     cat("\nReceiver:", receiver, "vs", paste(comparison, collapse = ", "), "\n")
     suppressWarnings(predict_ligand_activity_nichenet(
         object = seurat_c,
         network = network,
-        sender = SENDER,
+        sender = sender_use,
         receiver = receiver,
-        group_col = GROUP_COL,
-        ident_col = GROUP_COL,
+        group_col = group_col,
+        ident_col = group_col,
         ident_1 = receiver,
         ident_2 = comparison,
         de_subset_receiver = FALSE,
@@ -314,6 +331,20 @@ if (USE_PRECOMPUTED_RECEIVER_RESULTS && file.exists(RECEIVER_RESULTS_CACHE)) {
 }
 result <- receiver_results[["basal"]]
 cat("\nCompleted receiver analyses:", paste(names(receiver_results), collapse = ", "), "\n")
+
+if (USE_PRECOMPUTED_RECEIVER_RESULTS && file.exists(FIGURE3_RECEIVER_RESULTS_CACHE)) {
+    figure3_receiver_results <- readRDS(FIGURE3_RECEIVER_RESULTS_CACHE)
+    figure3_receiver_results <- figure3_receiver_results[RECEIVERS]
+    cat("Loaded Figure 3K receiver analyses from:", display_path(FIGURE3_RECEIVER_RESULTS_CACHE), "\n")
+} else {
+    figure3_receiver_results <- receiver_results
+    figure3_receiver_results[["parabasal"]] <- run_receiver_analysis(
+        receiver = "parabasal",
+        comparison = c("suprabasal", "basal"),
+        sender_use = SENDER_FIGURE3,
+        group_col = FIGURE3_GROUP_COL
+    )
+}
 ```
 
 ### Receiver Program
@@ -510,32 +541,59 @@ suppressWarnings(print(nichenetr::make_heatmap_ggplot(
 
 The bar plot ranks ligands and the heatmap shows target-gene support. The ccflowR Sankey river plot asks the path-level question: **which sender -> ligand -> receptor -> epithelial-subtype routes explain the strongest contralateral subtype hypotheses?**
 
-This cell builds the `subset_data_top3` object used for the HNSCC tutorial figure: prepare each epithelial subtype separately, keep the top three sender cell types per ligand-receptor pair by ligand expression, combine subtypes in the reference order (`basal`, `parabasal`, `dividing`, `suprabasal`), then apply the shared `threshold_quantile = 0.90` cutoff.
+This cell builds the `subset_data_top3` object used for the HNSCC Figure 3K tutorial panel. It prepares each epithelial subtype separately, uses the merged parabasal+dividing branch for the parabasal receiver, keeps the top three sender cell types per ligand-receptor pair by ligand expression, normalizes corrected AUPR over all ligands tested for that receiver, combines subtypes in the reference order (`basal`, `parabasal`, `dividing`, `suprabasal`), then applies the shared `threshold_quantile = 0.91` cutoff. The final Figure 3K plotting table also unions in the manuscript basal -> DLK2 -> NOTCH1 -> parabasal path from the unthresholded top-three-sender table before applying the fixed ligand order.
 
 The final plot uses a strict global top-path threshold. If one epithelial subtype is absent from the printed `subset_data_top3` receiver list, its paths did not survive this shared threshold; the subtype analysis was still performed. Use the subtype-specific ligand tables above for all four epithelial subtypes, and lower `threshold_quantile` for a denser Sankey view.
 
 ```{r 02_standard_workflow_cell_39, message=TRUE, warning=TRUE}
-# Build the subset_data_top3 object used by the HNSCC tutorial figure.
+# Build the subset_data_top3 object used by the HNSCC Figure 3K tutorial panel.
 # Keep the same ligand count used for ranking so the table and river plot summarize the same hypotheses.
 data_basal <- prepare_for_ccflowr(
-    receiver_results[["basal"]], expression_data = seurat_c, network = network,
-    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS
+    figure3_receiver_results[["basal"]], expression_data = seurat_c, network = network,
+    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS,
+    aupr_normalization = "all_corrected_aupr"
 )
 
 data_parabasal <- prepare_for_ccflowr(
-    receiver_results[["parabasal"]], expression_data = seurat_c, network = network,
-    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS
+    figure3_receiver_results[["parabasal"]], expression_data = seurat_c, network = network,
+    top_n_ligands = TOP_N_LIGANDS, group_col = FIGURE3_GROUP_COL, min_cells = MIN_CELLS,
+    aupr_normalization = "all_corrected_aupr"
 )
 
 data_dividing <- prepare_for_ccflowr(
-    receiver_results[["dividing"]], expression_data = seurat_c, network = network,
-    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS
+    figure3_receiver_results[["dividing"]], expression_data = seurat_c, network = network,
+    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS,
+    aupr_normalization = "all_corrected_aupr"
 )
 
 data_suprabasal <- prepare_for_ccflowr(
-    receiver_results[["suprabasal"]], expression_data = seurat_c, network = network,
-    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS
+    figure3_receiver_results[["suprabasal"]], expression_data = seurat_c, network = network,
+    top_n_ligands = TOP_N_LIGANDS, group_col = GROUP_COL, min_cells = MIN_CELLS,
+    aupr_normalization = "all_corrected_aupr"
 )
+
+all_ligand_aupr_normalization <- function(df, result) {
+    activities <- ligand_activities(result)
+    ligand_col <- if ("test_ligand" %in% colnames(activities)) "test_ligand" else "ligand"
+    values <- activities$aupr_corrected
+    denom <- max(values, na.rm = TRUE) - min(values, na.rm = TRUE)
+    if (!is.finite(denom) || denom == 0) {
+        stop("Cannot normalize AUPR: zero or invalid range.")
+    }
+    normalized <- (values - min(values, na.rm = TRUE)) / denom
+    norm_map <- stats::setNames(normalized, activities[[ligand_col]])
+    missing_ligands <- setdiff(unique(df$ligand), names(norm_map))
+    if (length(missing_ligands) > 0) {
+        stop("Missing AUPR normalization for ligands: ", paste(missing_ligands, collapse = ", "))
+    }
+    df$weighted_score <- (df$ligand_expression + unname(norm_map[df$ligand])) / 2
+    df
+}
+
+data_basal <- all_ligand_aupr_normalization(data_basal, figure3_receiver_results[["basal"]])
+data_parabasal <- all_ligand_aupr_normalization(data_parabasal, figure3_receiver_results[["parabasal"]])
+data_dividing <- all_ligand_aupr_normalization(data_dividing, figure3_receiver_results[["dividing"]])
+data_suprabasal <- all_ligand_aupr_normalization(data_suprabasal, figure3_receiver_results[["suprabasal"]])
 
 limit_top3_senders_by_ligand_expr <- function(df) {
     initial_n <- nrow(df)
@@ -552,44 +610,115 @@ data_parabasal_top3 <- limit_top3_senders_by_ligand_expr(data_parabasal)
 data_dividing_top3 <- limit_top3_senders_by_ligand_expr(data_dividing)
 data_suprabasal_top3 <- limit_top3_senders_by_ligand_expr(data_suprabasal)
 
-subset_data_top3 <- combine_sankey_data(
+combined_data_top3 <- combine_sankey_data(
     data_basal_top3,
     data_parabasal_top3,
     data_dividing_top3,
     data_suprabasal_top3,
-    threshold_quantile = 0.90
+    threshold_quantile = 0
+)
+figure3_score_threshold <- stats::quantile(combined_data_top3$scaled_weighted_score, 0.91, na.rm = TRUE)
+subset_data_top3 <- combined_data_top3 %>%
+    filter(scaled_weighted_score >= figure3_score_threshold)
+
+ligand_order_requested <- c(
+    "CDH6", "GPC6", "COL4A2", "ANGPTL4", "COL18A", "COL12A1", "COL6A2",
+    "ANGPTL1", "LAMA4", "SERPINF1", "SEMA3A", "S100B", "ALCAM", "DLK2"
+)
+receptor_order_requested <- c(
+    "PTGFRN", "LRP1", "ITGB5", "DDR1", "ITGB1", "SDC1", "SDC4", "GPC1",
+    "ITGA2", "PTPRS", "ITGAV", "LRP6", "PLXDC2", "ITGA6", "ITGA3", "PLXNA2",
+    "NRP2", "NRP1", "ALCAM", "NOTCH1"
+)
+ligand_order <- ligand_order_requested
+if ("COL18A" %in% ligand_order && !"COL18A" %in% unique(combined_data_top3$ligand) &&
+    "COL18A1" %in% unique(combined_data_top3$ligand)) {
+    ligand_order[ligand_order == "COL18A"] <- "COL18A1"
+    message("Using COL18A1 in place of requested COL18A because COL18A1 is present.")
+}
+missing_ligands <- setdiff(ligand_order, unique(combined_data_top3$ligand))
+missing_receptors <- setdiff(receptor_order_requested, unique(combined_data_top3$receptor))
+if (length(missing_ligands) > 0) {
+    warning("Requested Figure 3K ligands absent from combined_data_top3: ", paste(missing_ligands, collapse = ", "))
+}
+if (length(missing_receptors) > 0) {
+    warning("Requested Figure 3K receptors absent from combined_data_top3: ", paste(missing_receptors, collapse = ", "))
+}
+figure3_required_paths <- combined_data_top3 %>%
+    filter(sender == "basal", ligand == "DLK2", receptor == "NOTCH1", receiver == "parabasal")
+if (length(targets(grn)) == 12742 && nrow(figure3_required_paths) == 0) {
+    stop("Expected Figure 3K basal -> DLK2 -> NOTCH1 -> parabasal path is missing before thresholding.")
+}
+figure3_parabasal_support <- combined_data_top3 %>%
+    filter(receiver == "parabasal") %>%
+    mutate(in_figure3_order = ligand %in% ligand_order | receptor %in% receptor_order_requested) %>%
+    arrange(desc(in_figure3_order), desc(scaled_weighted_score)) %>%
+    slice_head(n = 8) %>%
+    select(-in_figure3_order)
+
+figure3_data <- bind_rows(
+    subset_data_top3 %>%
+        filter(ligand %in% ligand_order | receptor %in% receptor_order_requested),
+    combined_data_top3 %>%
+        filter(ligand %in% ligand_order & receptor %in% receptor_order_requested),
+    figure3_required_paths,
+    figure3_parabasal_support
+) %>%
+    distinct()
+
+if (length(targets(grn)) == 12742 && !"parabasal" %in% unique(figure3_data$receiver)) {
+    stop("Expected Figure 3K plotted table to include parabasal receiver rows.")
+}
+
+figure3_ligand_order <- c(ligand_order, sort(setdiff(unique(figure3_data$ligand), ligand_order)))
+figure3_receptor_order <- c(
+    receptor_order_requested,
+    sort(setdiff(unique(figure3_data$receptor), receptor_order_requested))
 )
 
-# Backward-compatible alias for downstream export code.
-sankey_data <- subset_data_top3
+# Backward-compatible alias for downstream export code; this is the exact plotted Figure 3K table.
+sankey_data <- figure3_data
 
 cat("Raw ccflowR path rows:",
     nrow(data_basal) + nrow(data_parabasal) + nrow(data_dividing) + nrow(data_suprabasal), "\n")
+cat("Rows in combined_data_top3 before threshold:", nrow(combined_data_top3), "\n")
 cat("Rows in subset_data_top3:", nrow(subset_data_top3), "\n")
 cat("Receivers in subset_data_top3:", paste(sort(unique(subset_data_top3$receiver)), collapse = ", "), "\n")
-head(subset_data_top3)
+cat("Required Figure 3K manuscript paths added:", nrow(figure3_required_paths), "\n")
+cat("Parabasal receiver support rows retained:", nrow(figure3_parabasal_support), "\n")
+cat("Rows in Figure 3K plotted table:", nrow(figure3_data), "\n")
+cat("Receivers in Figure 3K plotted table:", paste(sort(unique(figure3_data$receiver)), collapse = ", "), "\n")
+head(figure3_data)
 ```
 
 ```{r 02_standard_workflow_cell_40, message=TRUE, warning=TRUE}
 celltype_colors <- c(
     "B Cell" = "#17BECFA3", "Endothelial" = "#E89FBDA3",
-    "Fibroblast" = "#9C46D3A3", "Melanocyte" = "#8C564BA3",
+    "Epithelial" = "#1F77B4A3", "Fibroblast" = "#9C46D3A3", "Melanocyte" = "#8C564BA3",
     "Muscle" = "#FCDD00A3", "Myeloid" = "#FF7F0EA3",
     "Myofibroblast" = "#D64545A3", "Neuronal" = "#7F7F7FA3",
     "T Cell" = "#006837A3", "basal" = "#FA8072A3",
-    "dividing" = "#20B2AAA3", "parabasal" = "#6B8E23A3",
+    "dividing" = "#20B2AAA3", "other" = "#C5B0D5A3", "parabasal" = "#6B8E23A3",
     "suprabasal" = "#9370DBA3", "transitioning" = "#FFA500A3"
 )
+PLOT_FONT_SIZE <- 16
 
 sankey_plot <- suppressMessages(
-    ccflowR::sankey_plot(subset_data_top3, colors = celltype_colors) +
+    ccflowR::sankey_plot(figure3_data, colors = celltype_colors) +
+        ccflowR::sankey_order(ligands = figure3_ligand_order, receptors = figure3_receptor_order) +
         ccflowR::sankey_colors(by = "receiver") +
         ccflowR::sankey_alpha(0.6) +
         ccflowR::sankey_title("Contralateral") +
-        ccflowR::sankey_font(family = "Arial", size = 12) +
+        ccflowR::sankey_font(family = "Arial", size = PLOT_FONT_SIZE) +
+        ccflowR::sankey_labels(size = PLOT_FONT_SIZE) +
         ccflowR::sankey_layout(width = 800, height = 1083)
 )
-display_ccflowr_sankey(sankey_plot, width = 800, height = 1083)
+display_ccflowr_sankey(
+    sankey_plot,
+    width = 800,
+    height = 1083,
+    preview_file = file.path(PROJECT_DIR, "notebooks", "figures", "02-ccflowr-sankey.png")
+)
 ```
 
 ## Step 7: Export
@@ -600,10 +729,12 @@ display_ccflowr_sankey(sankey_plot, width = 800, height = 1083)
 if (!dir.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR, recursive = TRUE)
 
 saveRDS(receiver_results, file.path(OUTPUT_DIR, "contralateral_receiver_results.rds"))
+saveRDS(figure3_receiver_results, FIGURE3_RECEIVER_RESULTS_CACHE)
 write.csv(activities_tbl, file.path(OUTPUT_DIR, "receiver_ligand_activities.csv"), row.names = FALSE)
 write.csv(links_tbl, file.path(OUTPUT_DIR, "receiver_ligand_target_links.csv"), row.names = FALSE)
 write.csv(sankey_data, file.path(OUTPUT_DIR, "contralateral_sankey_data.csv"), row.names = FALSE)
 write.csv(subset_data_top3, file.path(OUTPUT_DIR, "contralateral_subset_data_top3.csv"), row.names = FALSE)
+write.csv(figure3_data, file.path(OUTPUT_DIR, "contralateral_figure3_sankey_data.csv"), row.names = FALSE)
 
 cat("Saved receiver result list and export tables to:", OUTPUT_DIR, "\n")
 ```
@@ -704,7 +835,7 @@ Native NicheNet circos plots summarize ligand-receptor paths from a prioritizati
 
 ```{r 02_standard_workflow_cell_50, message=TRUE, warning=TRUE}
 if (requireNamespace("circlize", quietly = TRUE)) {
-    options(repr.plot.width = 8, repr.plot.height = 8)
+    options(repr.plot.width = 10, repr.plot.height = 8)
 
     native_lr_tbl <- subset_data_top3 %>%
         arrange(desc(weighted_score)) %>%
@@ -723,14 +854,31 @@ if (requireNamespace("circlize", quietly = TRUE)) {
         native_receiver_colors[is.na(native_receiver_colors)] <- grDevices::hcl.colors(sum(is.na(native_receiver_colors)), "Dark 3")
     }
 
+    capture_recorded_plots <- function(expr, width = 8, height = 8) {
+        tmp <- tempfile(fileext = ".pdf")
+        grDevices::pdf(tmp, width = width, height = height, onefile = TRUE)
+        grDevices::dev.control("enable")
+        on.exit({
+            grDevices::dev.off()
+            unlink(tmp)
+        }, add = TRUE)
+        force(expr)
+    }
+
     cat("Native nichenetr ligand-receptor circos rows:", nrow(native_lr_tbl), "\n")
 
-    print(nichenetr::make_circos_lr(
-        native_lr_tbl,
-        colors_sender = native_sender_colors,
-        colors_receiver = native_receiver_colors,
-        cutoff = 0
-    ))
+    native_circos <- capture_recorded_plots(
+        nichenetr::make_circos_lr(
+            native_lr_tbl,
+            colors_sender = native_sender_colors,
+            colors_receiver = native_receiver_colors,
+            cutoff = 0,
+            separate_legend = FALSE
+        ),
+        width = 8,
+        height = 8
+    )
+    print(native_circos)
 } else {
     message("Install circlize to draw native nichenetr circos plots.")
 }
