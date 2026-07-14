@@ -66,11 +66,11 @@
 <div class="page-header"><h1 id="contextnet">ContextNet<a class="anchor" aria-label="anchor" href="#contextnet"></a>
 </h1></div>
 <p><strong>scMultiomics-Enhanced Cell-Cell Communication Inference</strong></p>
-<p>ContextNet extends <a href="https://github.com/saeyslab/nichenetr" class="external-link">NicheNet</a> by replacing its generic gene regulatory network with a <strong>context-specific gene regulatory network (GRN)</strong> inferred from single-cell multiomics data (scRNA-seq + scATAC-seq). This grounds ligand-target predictions in experimentally observed regulatory relationships specific to your biological system.</p>
+<p>ContextNet extends <a href="https://github.com/saeyslab/nichenetr" class="external-link">NicheNet</a> by replacing its generic gene regulatory network with a regulatory network inferred from sc-multiomic data. This grounds ligand-target predictions in experimentally observed regulatory relationships from the biological system being studied.</p>
 <div class="section level2">
 <h2 id="overview">Overview<a class="anchor" aria-label="anchor" href="#overview"></a>
 </h2>
-<p>NicheNet models intercellular communication by linking ligands to target genes through three network layers: ligand-receptor interactions, intracellular signaling, and gene regulation. Its gene regulatory network derives from aggregated prior knowledge across diverse biological contexts. ContextNet replaces this generic GRN with one inferred directly from your data, while preserving NicheNet’s curated signaling and ligand-receptor networks.</p>
+<p>NicheNet models intercellular communication by linking ligands to target genes through three network layers: ligand-receptor interactions, intracellular signaling, and gene regulation. Its gene regulatory network derives from aggregated prior knowledge across diverse biological contexts. ContextNet replaces this generic network with one inferred directly from the study data, while preserving NicheNet’s curated signaling and ligand-receptor networks.</p>
 <p>The framework has three components:</p>
 <table class="table">
 <colgroup>
@@ -84,7 +84,7 @@
 <tbody>
 <tr>
 <td><strong>GRN inference workflow</strong></td>
-<td>Snakemake pipeline for constructing context-specific transcription-factor to target-gene relationships from matched scRNA-seq + scATAC-seq. Public pipeline link: <a href="https://github.com/settylab/contextnet-pipeline" class="external-link uri">https://github.com/settylab/contextnet-pipeline</a>
+<td>Snakemake pipeline for constructing context-specific transcription-factor to target-gene relationships from matched scRNA-seq + scATAC-seq. Public pipeline link: <a href="https://github.com/settylab/context_specific_grn" class="external-link uri">https://github.com/settylab/context_specific_grn</a>
 </td>
 </tr>
 <tr>
@@ -102,42 +102,70 @@
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p>The recommended path is the bundled micromamba environment. It installs R, compiled system libraries, CRAN packages, Bioconductor packages, Jupyter, and IRkernel from conda-forge/bioconda where possible, then uses <code>inst/bootstrap.R</code> for GitHub-only R packages.</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># 1. Create the conda environment</span></span>
-<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="ex">micromamba</span> create <span class="at">-n</span> contextnet <span class="at">-f</span> environment.yml <span class="at">-y</span></span>
-<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a></span>
-<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="co"># 2. Install GitHub-only dependencies and ContextNet itself</span></span>
-<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="ex">micromamba</span> run <span class="at">-n</span> contextnet Rscript inst/bootstrap.R</span>
-<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a></span>
-<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a><span class="co"># 3. Register the notebook kernel with an intuitive name</span></span>
-<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a><span class="ex">micromamba</span> run <span class="at">-n</span> contextnet R <span class="at">-e</span> <span class="st">"IRkernel::installspec(name = 'contextnet_r', displayname = 'ContextNet R')"</span></span></code></pre></div>
-<p>The bootstrap installs required GitHub packages such as <code>nichenetr</code> and <code>multinichenetr</code>, then installs ContextNet from the local checkout. It does <strong>not</strong> require private GitHub access. This is important for publication use: a reader outside the lab should be able to install the core package without a settylab token.</p>
-<p><code>ccflowR</code> is optional visualization support for Sankey/river plots. It turns ContextNet or MultiNicheNet result tables into path-level diagrams that connect sender cell type, ligand, receptor, and receiver cell type. This is useful when ranked ligand tables are too dense and the reader needs to inspect the strongest cell-cell communication routes. Once <code>ccflowR</code> is public, install it into the same R environment with:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="ex">micromamba</span> run <span class="at">-n</span> contextnet R <span class="at">-e</span> <span class="st">"remotes::install_github('settylab/ccflowR', upgrade = 'never')"</span></span></code></pre></div>
-<p>or opt in during bootstrap:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="va">INSTALL_CCFLOWR</span><span class="op">=</span>true <span class="ex">micromamba</span> run <span class="at">-n</span> contextnet Rscript inst/bootstrap.R</span></code></pre></div>
-<p>If <code>ccflowR</code> is not installed, ContextNet still installs and the core analyses run; only Sankey/river plot cells are unavailable. See the <a href="vignettes/installation-micromamba.html">Micromamba Installation Guide</a> for manual install steps, kernel registration, and troubleshooting.</p>
+<p>ContextNet can be installed from a regular R or RStudio session, or from the bundled micromamba environment. The direct R/RStudio path is appropriate when R and system libraries are already managed locally. The micromamba path is appropriate when a reproducible Jupyter/R Markdown environment is needed or when source builds of compiled R packages are difficult on the local machine.</p>
 <div class="section level3">
-<h3 id="lightweight-install">Lightweight install<a class="anchor" aria-label="anchor" href="#lightweight-install"></a>
+<h3 id="direct-rrstudio-installation">Direct R/RStudio Installation<a class="anchor" aria-label="anchor" href="#direct-rrstudio-installation"></a>
 </h3>
-<p>If you already have a working R toolchain and only need ContextNet core functionality, install with hard dependencies first. Avoid <code>dependencies = TRUE</code> unless optional packages such as <code>ccflowR</code>, <code>Seurat</code>, and the full MultiNicheNet stack are already available.</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># In an R session with remotes installed</span></span>
-<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"settylab/ContextNet"</span>, dependencies <span class="op">=</span> <span class="cn">NA</span><span class="op">)</span></span>
+<p>Start in the R version that RStudio will use. In RStudio, confirm this with:</p>
+<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">R.version.string</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Rhome.html" class="external-link">R.home</a></span><span class="op">(</span><span class="st">"bin"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/libPaths.html" class="external-link">.libPaths</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
+<p>ContextNet requires R 4.1 or newer. On Linux or macOS, source installation may also require development libraries for HDF5, NLopt, curl, SSL, XML, Cairo, and a C/C++/Fortran toolchain. If these system libraries are not available, use the micromamba installation path below because it provides pre-built binaries for the common compiled dependencies.</p>
+<p>Install the R package installers and the packages needed for the ContextNet tutorials:</p>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"remotes"</span>, <span class="st">"BiocManager"</span>, <span class="st">"Seurat"</span>, <span class="st">"ggplot2"</span>, <span class="st">"htmlwidgets"</span>, <span class="st">"IRdisplay"</span>, <span class="st">"knitr"</span>, <span class="st">"rmarkdown"</span><span class="op">)</span>,</span>
+<span>    repos <span class="op">=</span> <span class="st">"https://cloud.r-project.org"</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>Install the NicheNet packages used by ContextNet workflows. <code>nichenetr</code> is required for network integration and ligand-activity analysis. <code>multinichenetr</code> and its Bioconductor dependencies are required for the multi-condition workflow in Tutorial 03.</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">BiocManager</span><span class="fu">::</span><span class="fu">install</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"muscat"</span>, <span class="st">"scater"</span>, <span class="st">"sva"</span>, <span class="st">"scran"</span><span class="op">)</span>, ask <span class="op">=</span> <span class="cn">FALSE</span>, update <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Optional Sankey/river-plot support once ccflowR is public</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"saeyslab/nichenetr"</span>, upgrade <span class="op">=</span> <span class="st">"never"</span><span class="op">)</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"saeyslab/multinichenetr"</span>, upgrade <span class="op">=</span> <span class="st">"never"</span><span class="op">)</span></span></code></pre></div>
+<p>Install ContextNet. From an R session with internet access, install from GitHub:</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"settylab/ContextNet"</span>, dependencies <span class="op">=</span> <span class="cn">NA</span>, upgrade <span class="op">=</span> <span class="st">"never"</span><span class="op">)</span></span></code></pre></div>
+<p>From a downloaded or cloned ContextNet source checkout, install the local source instead:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_local</span><span class="op">(</span><span class="st">"."</span>, dependencies <span class="op">=</span> <span class="cn">NA</span>, upgrade <span class="op">=</span> <span class="st">"never"</span><span class="op">)</span></span></code></pre></div>
+<p>Optional packages can be installed after the core package works. <code>presto</code> speeds up some Seurat differential-expression steps. <code>ccflowR</code> renders Sankey/river plots that show sender -&gt; ligand -&gt; receptor -&gt; receiver communication paths; core ContextNet analysis does not require it. Static PNG export from <code>ccflowR::sankey_save()</code> requires Kaleido (<code>kaleido&lt;1.0</code>) or <code>webshot2</code>; the bundled micromamba environment installs Kaleido for notebook previews.</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"immunogenomics/presto"</span>, upgrade <span class="op">=</span> <span class="st">"never"</span><span class="op">)</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"settylab/ccflowR"</span>, upgrade <span class="op">=</span> <span class="st">"never"</span><span class="op">)</span></span></code></pre></div>
+<p>RStudio users can then open the companion <code>.Rmd</code> files in <code>notebooks/</code> and run chunks interactively. No Jupyter kernel registration is needed for RStudio. If packages were installed in a terminal R but are not visible in RStudio, configure RStudio to use the same R shown by <code>R.home("bin")</code>, then restart RStudio and rerun <code><a href="https://github.com/settylab/ContextNet" class="external-link">library(ContextNet)</a></code>.</p>
 </div>
 <div class="section level3">
-<h3 id="verify-installation">Verify installation<a class="anchor" aria-label="anchor" href="#verify-installation"></a>
+<h3 id="reproducible-micromambajupyter-installation">Reproducible Micromamba/Jupyter Installation<a class="anchor" aria-label="anchor" href="#reproducible-micromambajupyter-installation"></a>
 </h3>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<p>The bundled micromamba environment installs R, compiled system libraries, CRAN packages, Bioconductor packages, Jupyter, and IRkernel from conda-forge/bioconda where possible, then uses <code>inst/bootstrap.R</code> for GitHub-only R packages.</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="co"># 1. Create the conda environment</span></span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a><span class="ex">micromamba</span> create <span class="at">-n</span> contextnet <span class="at">-f</span> environment.yml <span class="at">-y</span></span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a><span class="co"># 2. Install GitHub-only dependencies and ContextNet itself</span></span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a><span class="ex">micromamba</span> run <span class="at">-n</span> contextnet Rscript inst/bootstrap.R</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a><span class="co"># 3. Register the notebook kernel with an intuitive name</span></span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a><span class="ex">micromamba</span> run <span class="at">-n</span> contextnet R <span class="at">-e</span> <span class="st">"IRkernel::installspec(name = 'contextnet_r', displayname = 'ContextNet R')"</span></span></code></pre></div>
+<p>The bootstrap installs required GitHub packages such as <code>nichenetr</code> and <code>multinichenetr</code>, then installs ContextNet from the source checkout. Core ContextNet installation does not require a GitHub token.</p>
+<p><code>ccflowR</code> is optional visualization support for Sankey/river plots. Install it into the same R environment with:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="ex">micromamba</span> run <span class="at">-n</span> contextnet R <span class="at">-e</span> <span class="st">"remotes::install_github('settylab/ccflowR', upgrade = 'never')"</span></span></code></pre></div>
+<p>or opt in during bootstrap:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="va">INSTALL_CCFLOWR</span><span class="op">=</span>true <span class="ex">micromamba</span> run <span class="at">-n</span> contextnet Rscript inst/bootstrap.R</span></code></pre></div>
+<p>If <code>ccflowR</code> is not installed, ContextNet still installs and the core analyses run; only Sankey/river plot cells are unavailable. The environment file includes Kaleido for static PNG previews produced by <code>ccflowR::sankey_save()</code>; custom environments should install <code>kaleido&lt;1.0</code> in the Python environment used by <code>reticulate</code> or install <code>webshot2</code> before rerunning Sankey cells. Detailed micromamba troubleshooting is available in the <a href="vignettes/installation-micromamba.html">installation notes</a>.</p>
+</div>
+<div class="section level3">
+<h3 id="verify-installation">Verify Installation<a class="anchor" aria-label="anchor" href="#verify-installation"></a>
+</h3>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/settylab/ContextNet" class="external-link">ContextNet</a></span><span class="op">)</span></span>
 <span><span class="fu"><a href="reference/check_ecosystem.html">check_ecosystem</a></span><span class="op">(</span>verbose <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
-<p>For a fast functional test, run Tutorial 01. It uses the packaged synthetic smoke-test fixture under <code>inst/extdata/contextnet_smoke/</code>, so it does not require lab-private Seurat or AnnData files.</p>
+<p>A successful core installation should report <code>ContextNet</code> and <code>nichenetr</code> as available. <code>multinichenetr</code>, <code>Seurat</code>, and <code>ccflowR</code> are reported separately because they are needed only for specific workflows or optional visualization.</p>
+<p>For a fast functional test, run Tutorial 01. It uses the small example dataset included with the package at <code>inst/extdata/contextnet_smoke/</code>, so no external HNSCC data are required for the first check.</p>
 </div>
 <div class="section level3">
-<h3 id="known-installation-issues">Known installation issues<a class="anchor" aria-label="anchor" href="#known-installation-issues"></a>
+<h3 id="known-installation-issues">Known Installation Issues<a class="anchor" aria-label="anchor" href="#known-installation-issues"></a>
 </h3>
 <table class="table">
 <colgroup>
@@ -150,9 +178,27 @@
 </tr></thead>
 <tbody>
 <tr>
+<td>RStudio cannot find <code>ContextNet</code> after a terminal install</td>
+<td>RStudio is using a different R or library path. Compare <code>R.home("bin")</code> and <code><a href="https://rdrr.io/r/base/libPaths.html" class="external-link">.libPaths()</a></code> in both sessions, then configure RStudio to use the R where ContextNet was installed.</td>
+</tr>
+<tr>
+<td>
+<code>nichenetr</code> is missing during network integration</td>
+<td>Install it with <code>remotes::install_github("saeyslab/nichenetr", upgrade = "never")</code> in the same R used by ContextNet.</td>
+</tr>
+<tr>
+<td>
+<code>multinichenetr</code> or Bioconductor packages fail during Tutorial 03</td>
+<td>Install <code>muscat</code>, <code>scater</code>, <code>sva</code>, and <code>scran</code> with <code>BiocManager::install()</code>, then install <code>multinichenetr</code> from GitHub.</td>
+</tr>
+<tr>
 <td>
 <code>ccflowR</code> is not available</td>
-<td>ContextNet core analysis does not require it. Install it from <code>settylab/ccflowR</code> once the repository is public; until then, skip Sankey/river plots.</td>
+<td>ContextNet core analysis does not require it. Install it from <a href="https://github.com/settylab/ccflowR" class="external-link">settylab/ccflowR</a>, then rerun only the Sankey/river plot cells.</td>
+</tr>
+<tr>
+<td>ccflowR Sankey PNG preview is blank or missing</td>
+<td>Static export dependency is missing. Install <code>kaleido&lt;1.0</code> in the Python environment used by <code>reticulate</code> or install <code>webshot2</code>, then rerun the Sankey/river plot cells.</td>
 </tr>
 <tr>
 <td>Jupyter shows a raw <code>ir</code> kernel name</td>
@@ -161,18 +207,18 @@
 <tr>
 <td>
 <code>nloptr</code> fails to compile from source</td>
-<td>Use the micromamba env, which ships <code>nlopt</code> and <code>r-nloptr</code> pre-built. Outside the env, install system <code>nlopt</code> first.</td>
+<td>Install the system <code>nlopt</code> development library or use the micromamba env, which ships <code>nlopt</code> and <code>r-nloptr</code> pre-built.</td>
 </tr>
 <tr>
 <td>
 <code>hdf5r</code> configure: <code>hdf5 does not seem to be installed</code>
 </td>
-<td>Use the micromamba env, which ships <code>r-hdf5r</code> with HDF5. Outside the env, install your platform HDF5 development libraries.</td>
+<td>Install the platform HDF5 development libraries or use the micromamba env, which ships <code>r-hdf5r</code> with HDF5.</td>
 </tr>
 <tr>
 <td>
 <code>failed to lock directory</code> after a killed install</td>
-<td>Remove stale <code>00LOCK-*</code> directories or re-run <code>Rscript inst/bootstrap.R</code>, which clears them.</td>
+<td>Remove stale <code>00LOCK-*</code> directories from the first <code><a href="https://rdrr.io/r/base/libPaths.html" class="external-link">.libPaths()</a></code> entry, then rerun the install command.</td>
 </tr>
 <tr>
 <td>
@@ -190,10 +236,10 @@
 <div class="section level2">
 <h2 id="quick-start">Quick Start<a class="anchor" aria-label="anchor" href="#quick-start"></a>
 </h2>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/settylab/ContextNet" class="external-link">ContextNet</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># 1. Import your context-specific gene regulatory network (GRN)</span></span>
+<span><span class="co"># 1. Import a context-specific gene regulatory network (GRN)</span></span>
 <span><span class="va">grn</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/import_grn.html">import_grn</a></span><span class="op">(</span><span class="st">"gene_x_tf.csv"</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># 2. Integrate with NicheNet networks</span></span>
@@ -218,8 +264,8 @@
 <div class="section level3">
 <h3 id="sankey-visualization-with-ccflowr">Sankey visualization with ccflowR<a class="anchor" aria-label="anchor" href="#sankey-visualization-with-ccflowr"></a>
 </h3>
-<p>ContextNet pairs with <a href="https://github.com/settylab/ccflowR" class="external-link">ccflowR</a> to render cell-cell communication as a Sankey river diagram: sender cell type -&gt; ligand -&gt; receptor -&gt; receiver cell type. ccflowR is helpful when a ranked ligand table is too dense and you need to inspect the strongest path-level communication hypotheses. <code><a href="reference/prepare_for_ccflowr.html">prepare_for_ccflowr()</a></code> and <code><a href="reference/combine_sankey_data.html">combine_sankey_data()</a></code> build the Sankey data table from base ContextNet, and <code>ccflowR::sankey_plot()</code> renders the river plot used in Tutorials 02 and 03.</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<p>ContextNet pairs with <a href="https://github.com/settylab/ccflowR" class="external-link">ccflowR</a> to render cell-cell communication as a Sankey river diagram: sender cell type -&gt; ligand -&gt; receptor -&gt; receiver cell type. ccflowR is helpful when a ranked ligand table is too dense and the strongest path-level communication hypotheses need to be inspected. <code><a href="reference/prepare_for_ccflowr.html">prepare_for_ccflowr()</a></code> and <code><a href="reference/combine_sankey_data.html">combine_sankey_data()</a></code> build the Sankey data table from base ContextNet, and <code>ccflowR::sankey_plot()</code> renders the river plot used in Tutorials 02 and 03. See the <a href="https://github.com/settylab/ccflowR#readme" class="external-link">ccflowR documentation</a> for package-specific plotting options.</p>
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">ccflowR</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># 1. Build per-receiver Sankey data: composite score from ligand expression and predicted activity</span></span>
@@ -230,7 +276,8 @@
 <span></span>
 <span><span class="co"># 3. Render</span></span>
 <span><span class="va">cell_colors</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>Myeloid <span class="op">=</span> <span class="st">"#E41A1C"</span>, Fibroblast <span class="op">=</span> <span class="st">"#377EB8"</span>, Epithelial <span class="op">=</span> <span class="st">"#4DAF4A"</span><span class="op">)</span></span>
-<span><span class="fu">ccflowR</span><span class="fu">::</span><span class="fu">sankey_plot</span><span class="op">(</span><span class="va">sankey_data</span>, colors <span class="op">=</span> <span class="va">cell_colors</span><span class="op">)</span></span></code></pre></div>
+<span><span class="va">sankey_plot</span> <span class="op">&lt;-</span> <span class="fu">ccflowR</span><span class="fu">::</span><span class="fu">sankey_plot</span><span class="op">(</span><span class="va">sankey_data</span>, colors <span class="op">=</span> <span class="va">cell_colors</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">sankey_plot</span><span class="op">)</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
@@ -254,7 +301,7 @@
 <tr>
 <td>
 <a href="notebooks/02-standard-workflow.ipynb">02 - Standard Workflow</a> (<a href="notebooks/02-standard-workflow.Rmd">Rmd</a>)</td>
-<td>Contralateral-only receiver-state workflow with ccflowR Sankey river visualization</td>
+<td>Contralateral-only epithelial-subtype workflow with ccflowR Sankey river visualization</td>
 </tr>
 <tr>
 <td>
@@ -263,7 +310,7 @@
 </tr>
 </tbody>
 </table>
-<p>Installation is a separate setup step covered above and in the <a href="vignettes/installation-micromamba.html">Micromamba Installation Guide</a>. The notebooks assume the package is already installed, then walk through biological questions using local data. Tutorial 01 uses a packaged synthetic fixture. Tutorials 02 and 03 read a context-specific gene regulatory network (GRN), a Seurat object, and the NicheNet priors from local data paths and do not download anything while running. See <a href="notebooks/README.html">notebooks/README.md</a> for data requirements, kernel setup, expected outputs, and the R Markdown companion files.</p>
+<p>Installation is a separate setup step covered above. The notebooks assume ContextNet is already installed, then use either the included example dataset or the HNSCC tutorial data. Tutorial 01 uses the included example dataset at <code>inst/extdata/contextnet_smoke/</code>. Tutorials 02 and 03 read a context-specific gene regulatory network (GRN), a Seurat object, and the NicheNet priors from <code>data/</code> or from documented environment variables. See <a href="notebooks/README.html">notebooks/README.md</a> for data requirements, kernel setup, expected outputs, and the R Markdown companion files.</p>
 </div>
 <div class="section level2">
 <h2 id="key-functions">Key Functions<a class="anchor" aria-label="anchor" href="#key-functions"></a>
@@ -271,23 +318,31 @@
 <div class="section level3">
 <h3 id="gene-regulatory-network-grn-import">Gene Regulatory Network (GRN) Import<a class="anchor" aria-label="anchor" href="#gene-regulatory-network-grn-import"></a>
 </h3>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Target-gene x transcription-factor matrix from the GRN inference pipeline</span></span>
 <span><span class="va">grn_file</span> <span class="op">&lt;-</span> <span class="st">"gene_x_tf.csv"</span></span>
 <span><span class="va">grn</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/import_grn.html">import_grn</a></span><span class="op">(</span><span class="va">grn_file</span><span class="op">)</span></span></code></pre></div>
-<p>A context-specific gene regulatory network (GRN) is the core input that makes ContextNet different from default NicheNet. It stores transcription-factor to target-gene regulatory weights inferred from the profiled biological context. Use the ContextNet GRN inference pipeline (<a href="https://github.com/settylab/contextnet-pipeline" class="external-link uri">https://github.com/settylab/contextnet-pipeline</a>) or provide an equivalent matrix or edge table from another regulatory-inference workflow.</p>
+<p>A context-specific gene regulatory network (GRN) is the core input that makes ContextNet different from default NicheNet. It stores transcription-factor to target-gene regulatory weights inferred from the profiled biological context. Use the context-specific GRN inference pipeline (<a href="https://github.com/settylab/context_specific_grn" class="external-link uri">https://github.com/settylab/context_specific_grn</a>) or provide an equivalent matrix or edge table from another regulatory-inference workflow.</p>
 </div>
 <div class="section level3">
 <h3 id="network-integration">Network Integration<a class="anchor" aria-label="anchor" href="#network-integration"></a>
 </h3>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">network</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/integrate_networks.html">integrate_networks</a></span><span class="op">(</span><span class="va">grn</span>, nichenet_database <span class="op">=</span> <span class="st">"data/"</span>, mode <span class="op">=</span> <span class="st">"replace"</span><span class="op">)</span></span></code></pre></div>
-<p>Three modes: <code>replace</code> (default, most context-specific), <code>augment</code>, <code>weighted</code>.</p>
+<p>Integration modes:</p>
+<ul>
+<li>
+<code>replace</code> (default): use the context-specific GRN as the regulatory layer.</li>
+<li>
+<code>augment</code>: add the context-specific GRN edges to the default NicheNet network.</li>
+<li>
+<code>weighted</code>: combine context-specific and default regulatory weights.</li>
+</ul>
 </div>
 <div class="section level3">
 <h3 id="communication-analysis">Communication Analysis<a class="anchor" aria-label="anchor" href="#communication-analysis"></a>
 </h3>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Standard NicheNet (single condition or no replicates)</span></span>
 <span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu">predict_ligand_activity_nichenet</span><span class="op">(</span></span>
 <span>    <span class="va">object</span>, <span class="va">network</span>, <span class="va">sender</span>, <span class="va">receiver</span>,</span>
@@ -306,16 +361,17 @@
 <div class="section level3">
 <h3 id="visualization">Visualization<a class="anchor" aria-label="anchor" href="#visualization"></a>
 </h3>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Build Sankey data and render with ccflowR for a ContextResult</span></span>
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Build Sankey data and render with ccflowR for a ContextResult.</span></span>
 <span><span class="va">sankey_raw</span>  <span class="op">&lt;-</span> <span class="fu"><a href="reference/prepare_for_ccflowr.html">prepare_for_ccflowr</a></span><span class="op">(</span><span class="va">result</span>, expression_data <span class="op">=</span> <span class="va">seurat_obj</span>, network <span class="op">=</span> <span class="va">network</span><span class="op">)</span></span>
 <span><span class="va">sankey_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/combine_sankey_data.html">combine_sankey_data</a></span><span class="op">(</span><span class="va">sankey_raw</span>, threshold_quantile <span class="op">=</span> <span class="fl">0.95</span><span class="op">)</span></span>
-<span><span class="fu">ccflowR</span><span class="fu">::</span><span class="fu">sankey_plot</span><span class="op">(</span><span class="va">sankey_data</span>, colors <span class="op">=</span> <span class="va">cell_colors</span><span class="op">)</span></span></code></pre></div>
+<span><span class="va">sankey_plot</span> <span class="op">&lt;-</span> <span class="fu">ccflowR</span><span class="fu">::</span><span class="fu">sankey_plot</span><span class="op">(</span><span class="va">sankey_data</span>, colors <span class="op">=</span> <span class="va">cell_colors</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">sankey_plot</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="save--load">Save / Load<a class="anchor" aria-label="anchor" href="#save--load"></a>
 </h3>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="reference/save_contextnet.html">save_contextnet</a></span><span class="op">(</span><span class="va">result</span>, <span class="st">"analysis.cnet"</span><span class="op">)</span></span>
 <span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/load_contextnet.html">load_contextnet</a></span><span class="op">(</span><span class="st">"analysis.cnet"</span><span class="op">)</span></span></code></pre></div>
 </div>
@@ -337,7 +393,7 @@
 <div class="section level2">
 <h2 id="citation">Citation<a class="anchor" aria-label="anchor" href="#citation"></a>
 </h2>
-<p>If you use ContextNet in your research, please cite:</p>
+<p>Please cite ContextNet when using the package in a publication:</p>
 <blockquote>
 <p>[Citation to be added upon publication]</p>
 </blockquote>
