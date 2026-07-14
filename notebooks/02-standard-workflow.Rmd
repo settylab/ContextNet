@@ -721,6 +721,10 @@ display_ccflowr_sankey(
 )
 ```
 
+Static GitHub preview:
+
+![Figure 3K ccflowR Sankey river plot](figures/02-ccflowr-sankey.png)
+
 ## Step 7: Export
 
 ### Save and Load Results
@@ -831,7 +835,7 @@ if (nrow(native_heatmap_matrix) > 0 && ncol(native_heatmap_matrix) > 0) {
 }
 ```
 
-Native NicheNet circos plots summarize ligand-receptor paths from a prioritization table. The code below reuses `subset_data_top3`, converts the ContextNet path score to the `prioritization_score` column expected by `nichenetr::make_circos_lr()`, and keeps the same cell-type color map used in the ccflowR Sankey plot.
+A static circos plot summarizes ligand-receptor paths from a native NicheNet-style prioritization table. The code below reuses `subset_data_top3`, converts the ContextNet path score to the `prioritization_score` column expected by `nichenetr::make_circos_lr()`, and keeps the same cell-type color map used in the ccflowR Sankey plot.
 
 ```{r 02_standard_workflow_cell_50, message=TRUE, warning=TRUE}
 if (requireNamespace("circlize", quietly = TRUE)) {
@@ -854,32 +858,123 @@ if (requireNamespace("circlize", quietly = TRUE)) {
         native_receiver_colors[is.na(native_receiver_colors)] <- grDevices::hcl.colors(sum(is.na(native_receiver_colors)), "Dark 3")
     }
 
-    capture_recorded_plots <- function(expr, width = 8, height = 8) {
-        tmp <- tempfile(fileext = ".pdf")
-        grDevices::pdf(tmp, width = width, height = height, onefile = TRUE)
-        grDevices::dev.control("enable")
+
+
+    save_static_circos_lr <- function(prioritized_tbl, sender_colors, receiver_colors, file,
+                                      title = NULL, width = 1200, height = 960, res = 150) {
+        dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+        circos_tbl <- prioritized_tbl %>%
+            ungroup() %>%
+            mutate(
+                circos_weight = pmax(as.numeric(prioritization_score), .Machine$double.eps),
+                ligand_node = paste("L", sender, ligand, sep = "|"),
+                receptor_node = paste("R", receiver, receptor, sep = "|")
+            )
+        ligand_nodes <- circos_tbl %>% distinct(ligand_node, sender, ligand)
+        receptor_nodes <- circos_tbl %>% distinct(receptor_node, receiver, receptor)
+        links_circle <- circos_tbl %>%
+            group_by(ligand_node, receptor_node) %>%
+            summarise(circos_weight = max(circos_weight, na.rm = TRUE), .groups = "drop")
+        grid_col <- c(
+            stats::setNames(sender_colors[ligand_nodes$sender], ligand_nodes$ligand_node),
+            stats::setNames(receiver_colors[receptor_nodes$receiver], receptor_nodes$receptor_node)
+        )
+        grid_col[is.na(grid_col)] <- "#BDBDBD"
+        sector_order <- c(ligand_nodes$ligand_node, receptor_nodes$receptor_node)
+        gaps <- rep(1, length(sector_order))
+        if (length(sector_order) > 1) {
+            gaps[length(ligand_nodes$ligand_node)] <- 8
+            gaps[length(sector_order)] <- 8
+        }
+
+        grDevices::png(file, width = width, height = height, res = res, bg = "white")
         on.exit({
+            circlize::circos.clear()
             grDevices::dev.off()
-            unlink(tmp)
         }, add = TRUE)
-        force(expr)
+        graphics::layout(matrix(c(1, 2), nrow = 1), widths = c(4.2, 1.35))
+        graphics::par(mar = c(1, 1, 3, 0))
+        circlize::circos.clear()
+        circlize::circos.par(gap.degree = gaps, start.degree = 90)
+        circlize::chordDiagram(
+            links_circle,
+            directional = 1,
+            order = sector_order,
+            grid.col = grid_col,
+            transparency = 0.35,
+            annotationTrack = "grid",
+            preAllocateTracks = list(track.height = 0.25),
+            direction.type = c("diffHeight", "arrows"),
+            link.arr.length = 0.04,
+            link.arr.type = "big.arrow",
+            grid.border = "gray35",
+            link.lwd = 0.8,
+            link.lty = 1,
+            reduce = 0,
+            scale = TRUE
+        )
+        circlize::circos.trackPlotRegion(
+            track.index = 1,
+            panel.fun = function(x, y) {
+                sector <- circlize::get.cell.meta.data("sector.index")
+                parts <- strsplit(sector, "\\|")[[1]]
+                label <- parts[length(parts)]
+                circlize::circos.text(
+                    circlize::get.cell.meta.data("xcenter"),
+                    circlize::get.cell.meta.data("ylim")[1],
+                    label,
+                    facing = "clockwise",
+                    niceFacing = TRUE,
+                    adj = c(0, 0.5),
+                    cex = 0.62
+                )
+            },
+            bg.border = NA
+        )
+        if (!is.null(title)) {
+            graphics::title(title, line = 1)
+        }
+        graphics::par(mar = c(1, 0, 3, 1), xpd = NA)
+        graphics::plot.new()
+        graphics::plot.window(xlim = c(0, 1), ylim = c(0, 1))
+        legend_cex <- if (length(sender_colors) > 8) 0.6 else 0.75
+        graphics::legend(
+            x = 0, y = 1, legend = names(sender_colors), fill = unname(sender_colors),
+            title = "Sender", bty = "n", cex = legend_cex, x.intersp = 0.7, y.intersp = 0.9
+        )
+        receiver_y <- max(0.05, 1 - 0.08 * (length(sender_colors) + 2))
+        graphics::legend(
+            x = 0, y = receiver_y, legend = names(receiver_colors), fill = unname(receiver_colors),
+            title = "Receiver", bty = "n", cex = 0.75, x.intersp = 0.7, y.intersp = 0.9
+        )
+        invisible(file)
+    }
+
+    display_static_png <- function(file) {
+        if (requireNamespace("IRdisplay", quietly = TRUE)) {
+            IRdisplay::display_png(file = file)
+        } else {
+            message("Static figure written to ", file)
+        }
+        invisible(file)
     }
 
     cat("Native nichenetr ligand-receptor circos rows:", nrow(native_lr_tbl), "\n")
 
-    native_circos <- capture_recorded_plots(
-        nichenetr::make_circos_lr(
-            native_lr_tbl,
-            colors_sender = native_sender_colors,
-            colors_receiver = native_receiver_colors,
-            cutoff = 0,
-            separate_legend = FALSE
-        ),
-        width = 8,
-        height = 8
+    native_circos_file <- file.path(PROJECT_DIR, "notebooks", "figures", "02-native-circos.png")
+    save_static_circos_lr(
+        native_lr_tbl,
+        native_sender_colors,
+        native_receiver_colors,
+        native_circos_file,
+        title = "Native NicheNet ligand-receptor circos"
     )
-    print(native_circos)
+    display_static_png(native_circos_file)
 } else {
     message("Install circlize to draw native nichenetr circos plots.")
 }
 ```
+
+Static GitHub preview:
+
+![Native NicheNet circos plot with sender and receiver legends](figures/02-native-circos.png)
