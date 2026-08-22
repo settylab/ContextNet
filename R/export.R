@@ -458,7 +458,9 @@ combine_sankey_data <- function(..., threshold_quantile = 0.95) {
     # ── Step 2: Compute z-score expression probability per cell type ──
     zscore_prob <- NULL
     if (!is.null(expression_data)) {
-        zscore_prob <- .compute_zscore_prob(expression_data, la$ligand, group_col)
+        zscore_prob <- .compute_zscore_prob(
+            expression_data, la$ligand, group_col, clip_limit = 3
+        )
     }
 
     if (is.null(zscore_prob)) {
@@ -818,11 +820,14 @@ combine_sankey_data <- function(..., threshold_quantile = 0.95) {
 #' @param expression_data Seurat object
 #' @param genes Genes to compute probability for
 #' @param group_col Column name in Seurat metadata for cell type annotations
+#' @param clip_limit Positive numeric value used to clip expression z-scores to
+#'   the symmetric range \code{[-clip_limit, clip_limit]}
 #'
 #' @return data.frame with Gene column and one column per cell type (pnorm values),
 #'   or NULL if computation fails
 #' @keywords internal
-.compute_zscore_prob <- function(expression_data, genes, group_col = NULL) {
+.compute_zscore_prob <- function(expression_data, genes, group_col = NULL,
+                                 clip_limit = 10) {
     if (!inherits(expression_data, "Seurat")) {
         return(NULL)
     }
@@ -861,9 +866,9 @@ combine_sankey_data <- function(..., threshold_quantile = 0.95) {
     gene_sds <- apply(expr_sub, 1, stats::sd)
     gene_sds[gene_sds == 0] <- 1  # avoid division by zero
     z_mat <- (expr_sub - gene_means) / gene_sds
-    # Clip to [-10, 10] to match Seurat::ScaleData default (scale.max = 10)
-    z_mat[z_mat > 10] <- 10
-    z_mat[z_mat < -10] <- -10
+    # Clip expression z-scores to the requested symmetric range
+    z_mat[z_mat > clip_limit] <- clip_limit
+    z_mat[z_mat < -clip_limit] <- -clip_limit
 
     # ── Average z-score per gene per cell type ──
     cell_types <- as.character(expression_data@meta.data[[group_col]])
